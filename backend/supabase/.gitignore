@@ -1,0 +1,3 @@
+# Supabase CLI local state (created by `supabase db push`/`supabase gen types`, not by us).
+.branches
+.temp

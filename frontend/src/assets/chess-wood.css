@@ -1,0 +1,73 @@
+/* Wood theme overrides for @lichess-org/chessground */
+
+/* Board squares: warm wood tones with per-square SVG grain.
+   Light squares = golden maple (#c6a670), dark squares = walnut (#805733).
+   64 independent filter elements — each square gets its own unique seed pair
+   so grain never continues across a square border (as on a real board where
+   each square is a separate piece of wood).  Two-pass grain per square:
+   fractalNoise at 0.20 × 0.003 / 8 octaves for tight, mostly-straight lines;
+   a low-frequency fractalNoise + feDisplacementMap (scale 10) adds the subtle
+   cathedral-grain sway that distinguishes timber from foil reflections.
+   multiply blend darkens warmly along each grain line. */
+cg-board {
+  background-color: #ccaf7f;
+  background-image: url('./chess-board.svg');
+}
+
+/* Coordinate font size: bump from 9 px to 12 px for readability */
+.cg-wrap coords {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.cg-wrap coords.files {
+  bottom: -0.2%;
+  left: +4.3%;
+}
+
+.cg-wrap coords.ranks {
+  top: -3.8%;
+  left: +1%;
+}
+
+/* Drawable square markers: SVG circles are hidden; colour tint divs are injected
+   via DOM in ChessBoard.vue and positioned/coloured with inline styles instead. */
+.cg-wrap .cg-shapes circle {
+  display: none !important;
+}
+
+.cg-wrap cg-board .sq-tint {
+  position: absolute;
+  width: 12.5%;
+  height: 12.5%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cg-wrap piece {
+  image-rendering: auto;
+}
+
+/* Coords on LIGHT squares → dark walnut text.
+   Ranks: DOM order 1→8, column-reverse for white puts rank 1 at bottom (dark a1),
+   so EVEN-indexed ranks (2,4,6,8) land on light squares.
+   Files: even-indexed files (b,d,f,h) land on light squares at rank 1. */
+.orientation-white .ranks :nth-child(even),
+.orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(odd),
+.orientation-black .files :nth-child(odd),
+coords.squares:nth-of-type(odd) :nth-child(even),
+coords.squares:nth-of-type(even) :nth-child(odd) {
+  color: rgba(64, 38, 16, 0.92);
+}
+
+/* Coords on DARK squares → warm cream text. */
+.orientation-white .ranks :nth-child(odd),
+.orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(even),
+.orientation-black .files :nth-child(even),
+coords.squares:nth-of-type(odd) :nth-child(odd),
+coords.squares:nth-of-type(even) :nth-child(even) {
+  color: rgba(218, 182, 112, 0.95);
+}
