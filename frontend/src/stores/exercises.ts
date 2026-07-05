@@ -2,11 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useSyncStore } from '@/stores/sync'
-import {
-  applyTransformation,
-  findOriginalFen,
-  pickRandomTransformation,
-} from '@/utils/fenTransform'
+import { applyTransformCode, pickRandomTransformCode } from '@/utils/fenTransform'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
 import type { Tables } from '@/types/database'
 
@@ -226,6 +222,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   const solvedExercises = ref(loadSolvedExercises())
   const currentExerciseId = ref<string | null>(null)
   const currentTransformedFen = ref<string | null>(null)
+  const currentTransformCode = ref<string>('')
   const selectedCategory = ref<string | null>(loadSelectedCategory())
   const isLoading = ref(true)
   const initialPieceCount = ref<number | null>(null)
@@ -240,7 +237,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     if (cache) {
       allExercises.value = buildExercises(cache.puzzles)
       isLoading.value = false
-      if (!initialFen || !selectByTransformedRawFen(initialFen)) {
+      if (!initialFen || !selectById(initialFen.replaceAll('_', ' '))) {
         selectRandom()
       }
       void refreshExerciseCatalog(initialFen)
@@ -259,7 +256,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     allExercises.value = buildExercises(puzzles)
 
     if (currentExerciseId.value === null) {
-      if (!initialFen || !selectByTransformedRawFen(initialFen)) {
+      if (!initialFen || !selectById(initialFen.replaceAll('_', ' '))) {
         selectRandom()
       }
     } else {
@@ -527,10 +524,9 @@ export const useExercisesStore = defineStore('exercises', () => {
     }
 
     if (chosen) {
-      currentTransformedFen.value = applyTransformation(
-        chosen.fen,
-        pickRandomTransformation(chosen.fen),
-      )
+      const code = pickRandomTransformCode(chosen.fen)
+      currentTransformCode.value = code
+      currentTransformedFen.value = applyTransformCode(chosen.fen, code)
       currentExerciseId.value = chosen.id
       initialPieceCount.value = countPiecesInFen(chosen.fen)
     }
@@ -547,16 +543,14 @@ export const useExercisesStore = defineStore('exercises', () => {
       JSON.stringify(Object.fromEntries(solvedExercises.value)),
     )
 
-    const displayFen = currentTransformedFen.value ?? exercise.fen
-    useUserProfileStore().recordResult(eloOf(exercise), true, displayFen, id)
+    useUserProfileStore().recordResult(eloOf(exercise), true, currentTransformCode.value, id)
   }
 
   function recordFailed(): void {
     const id = currentExerciseId.value
     const exercise = currentExercise.value
     if (!exercise || !id) return
-    const displayFen = currentTransformedFen.value ?? exercise.fen
-    useUserProfileStore().recordResult(eloOf(exercise), false, displayFen, id)
+    useUserProfileStore().recordResult(eloOf(exercise), false, currentTransformCode.value, id)
   }
 
   // Cloud wins on login, but never in a way that can un-solve a puzzle this device
@@ -574,31 +568,28 @@ export const useExercisesStore = defineStore('exercises', () => {
     localStorage.setItem('solvedExercises', JSON.stringify(Object.fromEntries(merged)))
   }
 
-  function selectById(id: string): void {
+  // Selects an exercise by id (its original fen) and rolls a fresh random
+  // transformation for it. Returns false if no such exercise exists.
+  function selectById(id: string): boolean {
     const exercise = allExercises.value.find((ex) => ex.id === id)
-    if (exercise) {
-      currentTransformedFen.value = applyTransformation(
-        exercise.fen,
-        pickRandomTransformation(exercise.fen),
-      )
-      currentExerciseId.value = id
-      initialPieceCount.value = countPiecesInFen(exercise.fen)
-    }
+    if (!exercise) return false
+    const code = pickRandomTransformCode(exercise.fen)
+    currentTransformCode.value = code
+    currentTransformedFen.value = applyTransformCode(exercise.fen, code)
+    currentExerciseId.value = id
+    initialPieceCount.value = countPiecesInFen(exercise.fen)
+    return true
   }
 
-  // Accepts a raw FEN from the URL (underscores for spaces, possibly transformed).
-  // Tries all four self-inverse transformations to find the matching original exercise.
-  // Sets currentTransformedFen to the exact URL FEN so the board shows it as-is.
-  // Returns true if a matching exercise was found.
-  function selectByTransformedRawFen(rawFen: string): boolean {
-    const fenWithSpaces = rawFen.replaceAll('_', ' ')
-    const allFens = new Set(allExercises.value.map((ex) => ex.fen))
-    const originalFen = findOriginalFen(fenWithSpaces, allFens)
-    if (!originalFen) return false
-    const exercise = allExercises.value.find((ex) => ex.fen === originalFen)
+  // Selects an exercise by id and applies a specific, already-known transform
+  // code rather than rolling a new one — used to replay a puzzle exactly as it
+  // appeared in the user's history. Returns false if no such exercise exists.
+  function selectByIdWithTransform(id: string, code: string): boolean {
+    const exercise = allExercises.value.find((ex) => ex.id === id)
     if (!exercise) return false
-    currentTransformedFen.value = fenWithSpaces
-    currentExerciseId.value = exercise.id
+    currentTransformCode.value = code
+    currentTransformedFen.value = applyTransformCode(exercise.fen, code)
+    currentExerciseId.value = id
     initialPieceCount.value = countPiecesInFen(exercise.fen)
     return true
   }
@@ -645,6 +636,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     filteredExercises,
     currentExercise,
     currentTransformedFen,
+    currentTransformCode,
     categoryPuzzleTotal,
     categoryPuzzleSolved,
     categoryPuzzleFailed,
@@ -658,7 +650,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     recordSolved,
     recordFailed,
     selectById,
-    selectByTransformedRawFen,
+    selectByIdWithTransform,
     advanceToNext,
     previewExerciseForElo,
     setCategory,

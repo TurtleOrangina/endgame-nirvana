@@ -48,11 +48,14 @@ const {
   selectedCategory,
 } = storeToRefs(store)
 
-// The FEN to use in URLs and the board — transformed for variety, with underscores for the URL.
+// The FEN the board actually renders — transformed for variety.
 const currentBoardFen = computed(
   () => currentTransformedFen.value ?? currentExercise.value?.fen ?? null,
 )
-const currentRawFen = computed(() => currentBoardFen.value?.replaceAll(' ', '_') ?? null)
+// The FEN used in URLs — always the puzzle's original fen, with underscores for the
+// URL, regardless of which transformation is currently displayed. This is what lets
+// a fresh page load re-roll a random orientation while the URL itself stays stable.
+const currentRawFen = computed(() => currentExercise.value?.fen.replaceAll(' ', '_') ?? null)
 const { profile, sessionSolved, sessionFailed, sessionEloChange, lastEloChange } =
   storeToRefs(userProfileStore)
 
@@ -234,7 +237,7 @@ function handlePopState(): void {
   const exerciseChanged = route.fen && route.fen !== activeRawFen
 
   if (exerciseChanged && route.fen) {
-    store.selectByTransformedRawFen(route.fen)
+    store.selectById(route.fen.replaceAll('_', ' '))
     // sync watcher has already reset isAnalysisMode to false
     if (route.view === 'analysis') {
       isAnalysisMode.value = true
@@ -362,7 +365,13 @@ function resetPuzzle(): void {
   boardRef.value?.resetBoard()
 }
 
-function onRetry(): void {
+// Re-rolls a fresh random orientation for the same exercise before resetting the
+// board — `resetBoard()` re-reads `props.fen` at call time, and `nextTick()` here
+// ensures that prop has already picked up the new transform before it's called.
+async function onRetry(): Promise<void> {
+  const exercise = currentExercise.value
+  if (exercise) store.selectById(exercise.id)
+  await nextTick()
   resetPuzzle()
 }
 
@@ -529,9 +538,9 @@ function navigateToProfile(): void {
   currentView.value = 'profile'
 }
 
-function handleLoadPuzzle(exerciseId: string): void {
+function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }): void {
   suppressUrlUpdate = true
-  store.selectById(exerciseId)
+  store.selectByIdWithTransform(payload.exerciseId, payload.transformCode)
   suppressUrlUpdate = false
   currentView.value = 'training'
   history.pushState(null, '', buildRouteUrl('training', currentRawFen.value))

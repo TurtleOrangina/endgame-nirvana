@@ -8,6 +8,7 @@ import { useSyncStore } from '@/stores/sync'
 import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
 import { isValidEmail } from '@/utils/email'
+import { applyTransformCode } from '@/utils/fenTransform'
 import MiniBoard from '@/components/MiniBoard.vue'
 import CategoryProgressTree from '@/components/CategoryProgressTree.vue'
 import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
@@ -19,7 +20,7 @@ const SMTP_CONFIGURED = true
 
 const emit = defineEmits<{
   back: []
-  'load-puzzle': [exerciseId: string]
+  'load-puzzle': [payload: { exerciseId: string; transformCode: string }]
 }>()
 
 const userProfileStore = useUserProfileStore()
@@ -159,9 +160,26 @@ const inactivePuzzlesDetail = computed((): string | null => {
   return parts.length > 0 ? parts.join(', ') : null
 })
 
-const recentHistory = computed((): EloHistoryEntry[] => {
+interface HistoryCard {
+  entry: EloHistoryEntry
+  displayFen: string | null
+}
+
+// Pre-migration entries have no exerciseId (fen was stored directly back then) —
+// they simply show the placeholder, same as any other entry with no reconstructable
+// position. eloHistory/attempts are already capped to an 8-week rolling window, so
+// this only ever applies to a short transition period.
+const recentHistory = computed((): HistoryCard[] => {
   const history = profile.value?.eloHistory ?? []
-  return [...history].reverse().slice(0, 16)
+  return [...history]
+    .reverse()
+    .slice(0, 16)
+    .map((entry) => ({
+      entry,
+      displayFen: entry.exerciseId
+        ? applyTransformCode(entry.exerciseId, entry.transformCode ?? '')
+        : null,
+    }))
 })
 
 function eloChangeLabel(change: number): string {
@@ -170,7 +188,7 @@ function eloChangeLabel(change: number): string {
 
 function onCardClick(entry: EloHistoryEntry): void {
   if (entry.exerciseId) {
-    emit('load-puzzle', entry.exerciseId)
+    emit('load-puzzle', { exerciseId: entry.exerciseId, transformCode: entry.transformCode ?? '' })
   }
 }
 </script>
@@ -284,18 +302,18 @@ function onCardClick(entry: EloHistoryEntry): void {
       </p>
       <div v-else class="history-grid">
         <div
-          v-for="entry in recentHistory"
-          :key="entry.timestamp"
-          :class="['history-card', entry.exerciseId ? 'clickable' : '']"
-          :title="entry.exerciseId ? t((s) => s.profile.replayPuzzleTitle) : undefined"
-          @click="onCardClick(entry)"
+          v-for="card in recentHistory"
+          :key="card.entry.timestamp"
+          :class="['history-card', card.entry.exerciseId ? 'clickable' : '']"
+          :title="card.entry.exerciseId ? t((s) => s.profile.replayPuzzleTitle) : undefined"
+          @click="onCardClick(card.entry)"
         >
           <div class="board-wrap">
-            <MiniBoard v-if="entry.fen" :fen="entry.fen" />
+            <MiniBoard v-if="card.displayFen" :fen="card.displayFen" />
             <div v-else class="board-placeholder">?</div>
           </div>
-          <div :class="['elo-badge', entry.change >= 0 ? 'positive' : 'negative']">
-            {{ eloChangeLabel(entry.change) }}
+          <div :class="['elo-badge', card.entry.change >= 0 ? 'positive' : 'negative']">
+            {{ eloChangeLabel(card.entry.change) }}
           </div>
         </div>
       </div>

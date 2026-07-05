@@ -44,7 +44,7 @@ export interface EloHistoryEntry {
   exerciseDifficulty: number
   change: number
   newElo: number
-  fen?: string
+  transformCode?: string
   exerciseId?: string
   solved?: boolean
 }

@@ -16,7 +16,7 @@ const FLUSH_DEBOUNCE_MS = 30_000
 export interface PendingAttempt {
   client_attempt_id: string
   puzzle_id: string
-  transformed_fen: string | null
+  transform_code: string
   solved: boolean
   user_elo_before: number
   elo_change: number

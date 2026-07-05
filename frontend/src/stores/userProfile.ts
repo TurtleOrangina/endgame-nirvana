@@ -95,7 +95,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
   function recordResult(
     exerciseDifficulty: number,
     solved: boolean,
-    fen?: string,
+    transformCode?: string,
     exerciseId?: string,
   ): void {
     const p = profile.value
@@ -125,7 +125,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       exerciseDifficulty,
       change: delta,
       newElo: p.endgameElo,
-      fen,
+      transformCode,
       exerciseId,
       solved,
     }
@@ -137,7 +137,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       useSyncStore().enqueueAttempt({
         client_attempt_id: crypto.randomUUID(),
         puzzle_id: exerciseId,
-        transformed_fen: fen ?? null,
+        transform_code: transformCode ?? '',
         solved,
         user_elo_before: eloBefore,
         elo_change: delta,
@@ -221,7 +221,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
         exerciseDifficulty: 0,
         change: row.elo_change,
         newElo: row.new_elo,
-        fen: row.transformed_fen ?? undefined,
+        transformCode: row.transform_code ?? undefined,
         exerciseId: row.puzzle_id ?? undefined,
         solved: row.solved,
       })),

@@ -12,7 +12,7 @@ export type Database = {
           new_elo: number
           puzzle_id: string | null
           solved: boolean
-          transformed_fen: string | null
+          transform_code: string | null
           user_elo_before: number
           user_id: string
         }
@@ -24,7 +24,7 @@ export type Database = {
           new_elo: number
           puzzle_id?: string | null
           solved: boolean
-          transformed_fen?: string | null
+          transform_code?: string | null
           user_elo_before: number
           user_id: string
         }
@@ -36,7 +36,7 @@ export type Database = {
           new_elo?: number
           puzzle_id?: string | null
           solved?: boolean
-          transformed_fen?: string | null
+          transform_code?: string | null
           user_elo_before?: number
           user_id?: string
         }
@@ -122,6 +122,7 @@ export type Database = {
     }
     Functions: {
       delete_own_account: { Args: never; Returns: undefined }
+      export_puzzles: { Args: never; Returns: Json }
       pull_state: { Args: never; Returns: Json }
       record_attempts: { Args: { p_attempts: Json }; Returns: Json }
       seed_puzzles: { Args: { p_puzzles: Json }; Returns: number }
