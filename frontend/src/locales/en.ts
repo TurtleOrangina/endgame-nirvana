@@ -53,7 +53,8 @@ export const en = {
     lastMove: 'Last Move',
   },
   moveCounter: {
-    movesSinceZeroTooltip: 'Number of moves played since zeroing. Draw if it reaches 50!',
+    movesSinceZeroTooltip:
+      'Number of moves played since the last capture or pawn move. Draw if it reaches 50!',
   },
   board: {
     promotion: {
