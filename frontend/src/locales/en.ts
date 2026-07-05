@@ -193,7 +193,7 @@ export const en = {
       'Link your Lichess account to enable tablebase analysis and better computer move suggestions.',
     linkLichessAccount: 'Link Lichess Account',
     mode: {
-      title: 'Mode',
+      title: 'Appearance',
       description: "Choose the app's colour scheme.",
       dark: 'Dark',
       light: 'Light',

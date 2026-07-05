@@ -348,11 +348,12 @@ function onGameOver(result: GameResult): void {
 // it's a live indicator, independent of PuzzleStatus (which tracks the once-per-attempt rated
 // outcome and never reverts once FAILED).
 function onGoalEvaluated(isOutsideGoal: boolean): void {
+  const justWentOffCourse = isOutsideGoal && !isWrongSolution.value
   isWrongSolution.value = isOutsideGoal
+  if (justWentOffCourse) audio.playFailureSound()
   if (isOutsideGoal && puzzleStatus.value === PuzzleStatus.SOLVING) {
     puzzleStatus.value = PuzzleStatus.FAILED
     store.recordFailed()
-    audio.playFailureSound()
   }
 }
 
@@ -631,8 +632,6 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                   boardRef
                     ? {
                         displayMovesSinceZero: boardRef.displayMovesSinceZero,
-                        movesSinceZeroAnimKey: boardRef.movesSinceZeroAnimKey,
-                        movesSinceZeroAnimDirection: boardRef.movesSinceZeroAnimDirection,
                         pinnedTooltip: boardRef.pinnedTooltip,
                       }
                     : undefined
@@ -684,8 +683,6 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                     boardRef
                       ? {
                           displayMovesSinceZero: boardRef.displayMovesSinceZero,
-                          movesSinceZeroAnimKey: boardRef.movesSinceZeroAnimKey,
-                          movesSinceZeroAnimDirection: boardRef.movesSinceZeroAnimDirection,
                           pinnedTooltip: boardRef.pinnedTooltip,
                         }
                       : undefined

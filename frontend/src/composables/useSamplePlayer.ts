@@ -3,7 +3,10 @@ import { getAudioContext, resumeAudioContext } from './audioContext'
 // Fetching is safe to do eagerly on mount, but decoding must wait for the first
 // play(): decodeAudioData needs an AudioContext, and constructing one outside a
 // user gesture makes the browser log an autoplay warning.
-export function createSamplePlayer<TSound extends string>(urls: Record<TSound, string>) {
+export function createSamplePlayer<TSound extends string>(
+  urls: Record<TSound, string>,
+  volumes: Partial<Record<TSound, number>> = {},
+) {
   const decodedBuffers = new Map<TSound, AudioBuffer>()
   const pendingLoads = new Map<TSound, Promise<void>>()
   const prefetchedData = new Map<TSound, Promise<ArrayBuffer>>()
@@ -40,21 +43,25 @@ export function createSamplePlayer<TSound extends string>(urls: Record<TSound, s
     return load
   }
 
-  function playBuffer(buffer: AudioBuffer): void {
+  function playBuffer(buffer: AudioBuffer, volume: number): void {
     resumeAudioContext()
     const ctx = getAudioContext()
     const source = ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(ctx.destination)
+    const gain = ctx.createGain()
+    gain.gain.value = volume
+    source.connect(gain)
+    gain.connect(ctx.destination)
     source.start()
   }
 
   for (const sound of Object.keys(urls) as TSound[]) prefetchSound(sound)
 
   function play(sound: TSound): void {
+    const volume = volumes[sound] ?? 1
     const buffer = decodedBuffers.get(sound)
     if (buffer) {
-      playBuffer(buffer)
+      playBuffer(buffer, volume)
       return
     }
     // Multiple triggers can happen before a sound finishes its first load (e.g. while
@@ -66,7 +73,7 @@ export function createSamplePlayer<TSound extends string>(urls: Record<TSound, s
     void loadSound(sound).then(() => {
       pendingPlaysWhenLoaded.delete(sound)
       const loaded = decodedBuffers.get(sound)
-      if (loaded) playBuffer(loaded)
+      if (loaded) playBuffer(loaded, volume)
     })
   }
 

@@ -9,8 +9,6 @@ defineProps<{
   isFindingBestMove: boolean
   moveCounter?: {
     displayMovesSinceZero: number
-    movesSinceZeroAnimKey: number
-    movesSinceZeroAnimDirection: 'forward' | 'reverse'
     pinnedTooltip: 'zero' | null
   }
 }>()

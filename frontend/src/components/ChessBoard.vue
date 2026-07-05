@@ -119,24 +119,9 @@ const currentMovesSinceZero = computed(
   () => historyEntries.value[historyIndex.value]?.movesSinceZero ?? 0,
 )
 const displayMovesSinceZero = computed(() => Math.floor(currentMovesSinceZero.value / 2))
-const movesSinceZeroAnimKey = ref(0)
-const movesSinceZeroAnimDirection = ref<'forward' | 'reverse'>('forward')
 const pinnedTooltip = ref<'zero' | null>(null)
 let pinnedTooltipTimeout: ReturnType<typeof setTimeout> | undefined
 const PINNED_TOOLTIP_AUTO_CLOSE_MS = 5000
-
-// A zeroing move always resets the raw count to 0, even when the displayed
-// (halved) count was already 0 — animate a reverse spin in that case so the
-// reset is still visible rather than being silently swallowed.
-watch(currentMovesSinceZero, (newRaw, oldRaw) => {
-  if (newRaw === 0 && historyIndex.value > 0) {
-    movesSinceZeroAnimDirection.value = 'reverse'
-    movesSinceZeroAnimKey.value++
-  } else if (Math.floor(newRaw / 2) !== Math.floor(oldRaw / 2)) {
-    movesSinceZeroAnimDirection.value = 'forward'
-    movesSinceZeroAnimKey.value++
-  }
-})
 
 function toggleTooltip(which: 'zero'): void {
   clearTimeout(pinnedTooltipTimeout)
@@ -1248,8 +1233,6 @@ defineExpose({
   showMoveArrow,
   setAnalysisPaused,
   displayMovesSinceZero,
-  movesSinceZeroAnimKey,
-  movesSinceZeroAnimDirection,
   pinnedTooltip,
   toggleTooltip,
   canJumpBack,

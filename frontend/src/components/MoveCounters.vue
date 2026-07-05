@@ -1,10 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useLocale } from '@/composables/useLocale'
 
-defineProps<{
+const props = defineProps<{
   displayMovesSinceZero: number
-  movesSinceZeroAnimKey: number
-  movesSinceZeroAnimDirection: 'forward' | 'reverse'
   pinnedTooltip: 'zero' | null
 }>()
 
@@ -13,19 +12,29 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useLocale()
+
+// The 50-move rule draws at 50 moves since the last pawn push/capture — fill
+// the ring proportionally towards that threshold rather than resetting it each move.
+const RING_CIRCUMFERENCE = 81.68
+const DRAW_THRESHOLD_MOVES = 50
+
+const ringDashoffset = computed(() => {
+  const fraction = Math.min(props.displayMovesSinceZero / DRAW_THRESHOLD_MOVES, 1)
+  return RING_CIRCUMFERENCE * (1 - fraction)
+})
 </script>
 
 <template>
   <div class="move-counters">
     <div class="counter-bubble zero-count-bubble" @click.stop="emit('toggle-tooltip', 'zero')">
-      <svg :key="movesSinceZeroAnimKey" class="counter-ring" viewBox="0 0 32 32" fill="none">
+      <svg class="counter-ring" viewBox="0 0 32 32" fill="none">
         <circle class="ring-track zero-count-track" cx="16" cy="16" r="13" />
         <circle
           class="ring-sweep zero-count-sweep"
-          :class="{ reverse: movesSinceZeroAnimDirection === 'reverse' }"
           cx="16"
           cy="16"
           r="13"
+          :style="{ strokeDashoffset: ringDashoffset }"
         />
       </svg>
       <span class="counter-number">{{ displayMovesSinceZero }}</span>
@@ -77,12 +86,7 @@ const { t } = useLocale()
   fill: none;
   stroke-width: 2.5;
   stroke-dasharray: 81.68;
-  stroke-dashoffset: 81.68;
-  animation: ring-sweep 0.55s ease-out forwards;
-}
-
-.ring-sweep.reverse {
-  animation-direction: reverse;
+  transition: stroke-dashoffset 0.4s ease-out;
 }
 
 .zero-count-track {
@@ -129,15 +133,5 @@ const { t } = useLocale()
 .tooltip.pinned {
   opacity: 1;
   pointer-events: auto;
-}
-
-@keyframes ring-sweep {
-  from {
-    stroke-dashoffset: 81.68;
-  }
-
-  to {
-    stroke-dashoffset: 0;
-  }
 }
 </style>

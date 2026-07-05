@@ -199,7 +199,7 @@ export const de: typeof en = {
       'Verknüpfe dein Lichess-Konto, um Tablebase-Analyse und bessere Computerzüge zu aktivieren.',
     linkLichessAccount: 'Lichess-Konto verknüpfen',
     mode: {
-      title: 'Modus',
+      title: 'Aussehen',
       description: 'Wähle das Farbschema der App.',
       dark: 'Dunkel',
       light: 'Hell',

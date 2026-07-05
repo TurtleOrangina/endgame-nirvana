@@ -4,10 +4,13 @@ import failureUrl from '@/assets/sounds/failure.mp3'
 
 type ResultSound = 'success' | 'failure'
 
-const player = createSamplePlayer<ResultSound>({
-  success: successUrl,
-  failure: failureUrl,
-})
+const player = createSamplePlayer<ResultSound>(
+  {
+    success: successUrl,
+    failure: failureUrl,
+  },
+  { success: 0.15, failure: 0.15 },
+)
 
 export function useResultAudio() {
   function playSuccessSound(): void {
