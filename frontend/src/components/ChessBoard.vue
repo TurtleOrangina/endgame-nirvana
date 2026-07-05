@@ -1313,6 +1313,7 @@ defineExpose({
   position: relative;
   width: 100%;
   aspect-ratio: 1;
+  container-type: inline-size;
 }
 
 .board {
@@ -1441,12 +1442,12 @@ defineExpose({
 }
 
 .game-end-reason-main {
-  font-size: min(12vw, 84px);
+  font-size: 12.5cqw;
   font-weight: 800;
 }
 
 .game-end-reason-sub {
-  font-size: min(6vw, 44px);
+  font-size: 6.5cqw;
   font-weight: 600;
   opacity: 0.9;
 }
