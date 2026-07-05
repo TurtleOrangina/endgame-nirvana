@@ -517,6 +517,17 @@ const visibleCategoryOptions = computed(() => {
   return result
 })
 
+// Widens the difficulty preference just enough to include puzzles above the user's
+// level: 'around' -> 'aroundAndAbove', 'aroundAndBelow' -> 'all'. (Preferences that
+// already include everything above the user's level never hide puzzles as "too hard",
+// so this button can only ever be shown for those two starting values.)
+function allowSolvingTooHard(): void {
+  const current = profile.value?.difficultyPreference ?? 'around'
+  const next = current === 'aroundAndBelow' ? 'all' : 'aroundAndAbove'
+  userProfileStore.setDifficultyPreference(next)
+  store.onDifficultyPreferenceChanged()
+}
+
 function selectCategory(cat: string | null): void {
   store.setCategory(cat)
   if (dropdownRef.value) dropdownRef.value.open = false
@@ -948,6 +959,13 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                 <p v-if="categoryHiddenCounts.tooHard > 0">
                   {{ t((s) => s.app.hiddenTooHard, { count: categoryHiddenCounts.tooHard }) }}
                 </p>
+                <button
+                  v-if="categoryHiddenCounts.tooHard > 0"
+                  class="btn-action btn-allow-harder"
+                  @click="allowSolvingTooHard"
+                >
+                  {{ t((s) => s.app.allowSolvingTooHard) }}
+                </button>
                 <p v-if="categoryHiddenCounts.tooEasy > 0">
                   {{ t((s) => s.app.hiddenTooEasy, { count: categoryHiddenCounts.tooEasy }) }}
                 </p>
@@ -1594,5 +1612,16 @@ body {
   font-size: 0.85rem;
   font-weight: 400;
   color: var(--muted);
+}
+
+.btn-allow-harder {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.btn-allow-harder:hover {
+  background: var(--hover-bg);
 }
 </style>

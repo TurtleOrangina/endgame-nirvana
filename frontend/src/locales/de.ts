@@ -41,6 +41,7 @@ export const de: typeof en = {
     noMatchingExercises: 'Keine Übungen entsprechen den aktuellen Filtern.',
     allSolvedInCategory: '🎉 Du hast alle Übungen in dieser Kategorie gelöst 🎉',
     hiddenTooHard: '{count} Aufgaben sind ausgeblendet, weil sie zu schwer für dein Rating sind.',
+    allowSolvingTooHard: 'Auch zu schwere Aufgaben zum Lösen zulassen',
     hiddenTooEasy: '{count} Aufgaben sind ausgeblendet, weil sie zu leicht für dein Rating sind.',
     engineDownloading: 'Engine wird heruntergeladen… {percent}% ({speed})',
     engineDownloadingWithEta: 'Engine wird heruntergeladen… {percent}% ({speed}, noch {eta})',

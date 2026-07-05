@@ -39,6 +39,7 @@ export const en = {
     noMatchingExercises: 'No exercises match the current filters.',
     allSolvedInCategory: '🎉 You have solved all exercises in this category 🎉',
     hiddenTooHard: '{count} puzzles are hidden because they are too hard for your level.',
+    allowSolvingTooHard: 'Allow solving of too hard puzzles',
     hiddenTooEasy: '{count} puzzles are hidden because they are too easy for your level.',
     engineDownloading: 'Downloading engine… {percent}% ({speed})',
     engineDownloadingWithEta: 'Downloading engine… {percent}% ({speed}, {eta} left)',
