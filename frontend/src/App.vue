@@ -423,7 +423,12 @@ function onAnalyse(): void {
 function onLeaveAnalysis(): void {
   isAnalysisMode.value = false
   analysisPaused.value = false
-  resetPuzzle()
+  puzzleStatus.value = PuzzleStatus.FAILED
+  isWrongSolution.value = false
+  analysisLines.value = []
+  analysisTablebase.value = null
+  analysisFen.value = ''
+  boardRef.value?.leaveAnalysisMode()
   history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
 }
 

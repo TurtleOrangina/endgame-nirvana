@@ -970,6 +970,32 @@ async function applyEngineReply(bestmove: string): Promise<void> {
   cg.playPremove()
 }
 
+// Races the engine/tablebase for a reply and applies it, shared by the normal
+// post-player-move flow and by leaveAnalysisMode() when analysis is left with
+// the computer on move.
+async function triggerEngineTurn(gen: number, isPremove = false): Promise<void> {
+  if (!chess || !cg) return
+  const { bestmove, evalResult, tbData } = await raceForBestMove(chess.fen(), isPremove)
+
+  if (moveGeneration !== gen || !chess || !cg) return
+
+  checkExerciseFailure(evalResult, tbData)
+
+  if (!bestmove) {
+    restorePlayerMovable()
+    return
+  }
+
+  if (
+    shouldAutoSolve(chess.fen(), evalResult.scoreCP, evalResult.scoreMate, tbData?.category ?? null)
+  ) {
+    endGame('win')
+    return
+  }
+
+  await applyEngineReply(bestmove)
+}
+
 async function processPlayerMove(
   orig: Key,
   dest: Key,
@@ -1042,26 +1068,7 @@ async function processPlayerMove(
     movable: { color: playerColor, free: false, dests: new Map() },
   })
   isWaitingForEngineReply.value = true
-
-  const { bestmove, evalResult, tbData } = await raceForBestMove(chess.fen(), isPremove)
-
-  if (moveGeneration !== gen || !chess || !cg) return
-
-  checkExerciseFailure(evalResult, tbData)
-
-  if (!bestmove) {
-    restorePlayerMovable()
-    return
-  }
-
-  if (
-    shouldAutoSolve(chess.fen(), evalResult.scoreCP, evalResult.scoreMate, tbData?.category ?? null)
-  ) {
-    endGame('win')
-    return
-  }
-
-  await applyEngineReply(bestmove)
+  await triggerEngineTurn(gen, isPremove)
 }
 
 function onAfterMove(orig: Key, dest: Key, metadata: MoveMetadata): void {
@@ -1159,23 +1166,51 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 }
 
+// Deliberately leaves the board exactly where it is — jumping to move 0 caused vertigo when
+// the user only wanted to glance at the last few moves. A "First Move" nav button already
+// covers the case where they do want the start.
 function enterAnalysisMode(): void {
   if (!chess || !cg) return
   analysisPaused.value = false
   isAnalysisMode.value = true
-  if (isGameOver.value) {
-    historyIndex.value = 0
-    showHistoryPosition()
-  } else {
-    cg.set({
-      movable: { color: 'both', free: false, dests: buildDests(chess) },
-    })
-    onPositionChanged()
-  }
+  cg.set({
+    movable: { color: 'both', free: false, dests: buildDests(chess) },
+  })
+  onPositionChanged()
 }
 
+// Resumes normal (unrated) play from whatever position analysis happened to be showing,
+// discarding any analysis-only continuation beyond it. If the computer is on move there,
+// it needs to be nudged to reply so play can continue from the player's side.
 function leaveAnalysisMode(): void {
-  resetBoard()
+  if (!chess || !cg) return
+  cancelPendingPromotion()
+  moveGeneration++
+  const gen = moveGeneration
+  isAnalysisMode.value = false
+  analysisPaused.value = false
+  resetAnalysisArrows()
+  historyEntries.value = historyEntries.value.slice(0, historyIndex.value + 1)
+
+  updateGameEndDisplay(chess.fen())
+  isGameOver.value = gameEndInfo.value !== null
+
+  if (isGameOver.value) {
+    cg.set({ movable: { color: undefined } })
+    return
+  }
+
+  if (toColor(chess.turn()) === playerColor) {
+    restorePlayerMovable()
+    return
+  }
+
+  cg.set({
+    turnColor: toColor(chess.turn()),
+    movable: { color: playerColor, free: false, dests: new Map() },
+  })
+  isWaitingForEngineReply.value = true
+  void triggerEngineTurn(gen)
 }
 
 function loadFen(fen: string): boolean {
