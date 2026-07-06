@@ -8,14 +8,17 @@ import promoteUrl from '@/assets/sounds/promote.mp3'
 
 export type BoardSound = 'move' | 'capture' | 'castle' | 'check' | 'promote' | 'checkmate'
 
-const player = createSamplePlayer<BoardSound>({
-  move: moveUrl,
-  capture: captureUrl,
-  castle: castleUrl,
-  check: checkUrl,
-  promote: promoteUrl,
-  checkmate: checkmateUrl,
-})
+const player = createSamplePlayer<BoardSound>(
+  {
+    move: moveUrl,
+    capture: captureUrl,
+    castle: castleUrl,
+    check: checkUrl,
+    promote: promoteUrl,
+    checkmate: checkmateUrl,
+  },
+  { move: 0.35, capture: 0.35, castle: 0.35, check: 0.35, promote: 0.35, checkmate: 0.35 },
+)
 
 export function useBoardAudio() {
   return { play: player.play }

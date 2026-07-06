@@ -9,7 +9,7 @@ const player = createSamplePlayer<ResultSound>(
     success: successUrl,
     failure: failureUrl,
   },
-  { success: 0.15, failure: 0.15 },
+  { success: 0.08, failure: 0.08 },
 )
 
 export function useResultAudio() {
