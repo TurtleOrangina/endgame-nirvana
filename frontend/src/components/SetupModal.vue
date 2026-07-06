@@ -261,195 +261,220 @@ async function submitSignIn(): Promise<void> {
       </div>
 
       <form v-if="mode === 'signin'" class="form" @submit.prevent="submitSignIn">
-        <label class="field">
-          <span class="label-text">{{ t((s) => s.common.email) }}</span>
-          <input
-            v-model="email"
-            type="email"
-            class="input"
-            :class="{ 'input-invalid': emailError }"
-            :placeholder="t((s) => s.setup.emailPlaceholder)"
-            autocomplete="username"
-            required
-            autofocus
-          />
-        </label>
-        <p v-if="emailError" class="error-message">{{ emailError }}</p>
-        <label class="field">
-          <span class="label-text">{{ t((s) => s.common.password) }}</span>
-          <input
-            v-model="password"
-            type="password"
-            class="input"
-            :placeholder="t((s) => s.common.passwordPlaceholder)"
-            minlength="6"
-            autocomplete="current-password"
-            required
-          />
-        </label>
+        <div class="step-content">
+          <label class="field">
+            <span class="label-text">{{ t((s) => s.common.email) }}</span>
+            <input
+              v-model="email"
+              type="email"
+              class="input"
+              :class="{ 'input-invalid': emailError }"
+              :placeholder="t((s) => s.setup.emailPlaceholder)"
+              autocomplete="username"
+              required
+              autofocus
+            />
+          </label>
+          <p v-if="emailError" class="error-message">{{ emailError }}</p>
+          <label class="field">
+            <span class="label-text">{{ t((s) => s.common.password) }}</span>
+            <input
+              v-model="password"
+              type="password"
+              class="input"
+              :placeholder="t((s) => s.common.passwordPlaceholder)"
+              minlength="6"
+              autocomplete="current-password"
+              required
+            />
+          </label>
 
-        <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+          <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+        </div>
 
-        <button type="submit" class="btn-submit" :disabled="isSubmitting">
-          {{ isSubmitting ? t((s) => s.setup.signingIn) : t((s) => s.setup.signInButton) }}
-        </button>
+        <div class="step-actions">
+          <button type="submit" class="btn-submit" :disabled="isSubmitting">
+            {{ isSubmitting ? t((s) => s.setup.signingIn) : t((s) => s.setup.signInButton) }}
+          </button>
+        </div>
       </form>
 
       <form v-else-if="step === 'basics'" class="form" @submit.prevent="goToLichessStep">
-        <p class="step-info">
-          {{ t((s) => s.setup.basicsInfo) }}
-        </p>
+        <div class="step-content">
+          <p class="step-info">
+            {{ t((s) => s.setup.basicsInfo) }}
+          </p>
 
-        <label class="field">
-          <span class="label-text">{{ t((s) => s.setup.nameLabel) }}</span>
-          <input
-            v-model="username"
-            type="text"
-            class="input"
-            :placeholder="t((s) => s.setup.nicknamePlaceholder)"
-            autocomplete="nickname"
-            data-1p-ignore
-            data-lpignore="true"
-            data-bwignore="true"
-            data-form-type="other"
-            required
-            autofocus
-          />
-        </label>
+          <label class="field">
+            <span class="label-text">{{ t((s) => s.setup.nameLabel) }}</span>
+            <input
+              v-model="username"
+              type="text"
+              class="input"
+              :placeholder="t((s) => s.setup.nicknamePlaceholder)"
+              autocomplete="nickname"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore="true"
+              data-form-type="other"
+              required
+              autofocus
+            />
+          </label>
 
-        <fieldset class="field">
-          <legend class="label-text">{{ t((s) => s.setup.startingLevel) }}</legend>
-          <div class="radio-group">
-            <label class="radio-option">
-              <input v-model="startElo" type="radio" :value="800" />
-              <span class="radio-label">
-                <strong>{{ t((s) => s.setup.beginner) }}</strong>
-                <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 800 }) }}</span>
-              </span>
-            </label>
-            <label class="radio-option">
-              <input v-model="startElo" type="radio" :value="1400" />
-              <span class="radio-label">
-                <strong>{{ t((s) => s.setup.intermediate) }}</strong>
-                <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 1400 }) }}</span>
-              </span>
-            </label>
-            <label class="radio-option">
-              <input v-model="startElo" type="radio" :value="2000" />
-              <span class="radio-label">
-                <strong>{{ t((s) => s.setup.expert) }}</strong>
-                <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 2000 }) }}</span>
-              </span>
-            </label>
-          </div>
-        </fieldset>
+          <fieldset class="field">
+            <legend class="label-text">{{ t((s) => s.setup.startingLevel) }}</legend>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input v-model="startElo" type="radio" :value="800" />
+                <span class="radio-label">
+                  <strong>{{ t((s) => s.setup.beginner) }}</strong>
+                  <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 800 }) }}</span>
+                </span>
+              </label>
+              <label class="radio-option">
+                <input v-model="startElo" type="radio" :value="1400" />
+                <span class="radio-label">
+                  <strong>{{ t((s) => s.setup.intermediate) }}</strong>
+                  <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 1400 }) }}</span>
+                </span>
+              </label>
+              <label class="radio-option">
+                <input v-model="startElo" type="radio" :value="2000" />
+                <span class="radio-label">
+                  <strong>{{ t((s) => s.setup.expert) }}</strong>
+                  <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 2000 }) }}</span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+        </div>
 
-        <button type="submit" class="btn-submit" :disabled="!username.trim()">
-          {{ t((s) => s.setup.continue) }}
-        </button>
+        <div class="step-actions">
+          <button type="submit" class="btn-submit" :disabled="!username.trim()">
+            {{ t((s) => s.setup.continue) }}
+          </button>
+        </div>
       </form>
 
       <div v-else-if="step === 'lichess'" class="form">
         <template v-if="lichessAuth.isLinked.value">
-          <p class="step-info">
-            {{ t((s) => s.setup.lichessLinkedIntro) }}
-            <strong>{{ lichessAuth.lichessUsername.value }}</strong
-            >{{ t((s) => s.setup.lichessLinkedOutro) }}
-          </p>
-          <button type="button" class="btn-submit" @click="goToAccountStep">
-            {{ t((s) => s.setup.next) }}
-          </button>
+          <div class="step-content">
+            <p class="step-info">
+              {{ t((s) => s.setup.lichessLinkedIntro) }}
+              <strong>{{ lichessAuth.lichessUsername.value }}</strong
+              >{{ t((s) => s.setup.lichessLinkedOutro) }}
+            </p>
+          </div>
+          <div class="step-actions">
+            <button type="button" class="btn-submit" @click="goToAccountStep">
+              {{ t((s) => s.setup.next) }}
+            </button>
+          </div>
         </template>
         <template v-else>
-          <p class="step-info">
-            {{ t((s) => s.setup.lichessInfo) }}
-          </p>
-          <button type="button" class="btn-submit" @click="linkLichess()">
-            {{ t((s) => s.setup.linkLichess) }}
-          </button>
-          <button type="button" class="btn-train-locally" @click="goToAccountStep">
-            {{ t((s) => s.setup.continueWithoutLichess) }}
-          </button>
+          <div class="step-content">
+            <p class="step-info">
+              {{ t((s) => s.setup.lichessInfo) }}
+            </p>
+          </div>
+          <div class="step-actions">
+            <button type="button" class="btn-train-locally" @click="goToAccountStep">
+              {{ t((s) => s.setup.continueWithoutLichess) }}
+            </button>
+            <button type="button" class="btn-submit" @click="linkLichess()">
+              {{ t((s) => s.setup.linkLichess) }}
+            </button>
+          </div>
         </template>
       </div>
 
       <form v-else-if="step === 'account'" class="form" @submit.prevent="submitAccountStep">
-        <p class="step-info">
-          {{ t((s) => s.setup.accountInfo) }}
-        </p>
+        <div class="step-content">
+          <p class="step-info">
+            {{ t((s) => s.setup.accountInfo) }}
+          </p>
 
-        <label class="field">
-          <span class="label-text">{{ t((s) => s.common.email) }}</span>
-          <input
-            v-model="email"
-            type="email"
-            class="input"
-            :class="{ 'input-invalid': emailError }"
-            :placeholder="t((s) => s.setup.emailPlaceholder)"
-            autocomplete="username"
-          />
-        </label>
-        <label class="field">
-          <span class="label-text">{{ t((s) => s.common.password) }}</span>
-          <input
-            v-model="password"
-            type="password"
-            class="input"
-            :placeholder="t((s) => s.common.passwordPlaceholder)"
-            minlength="6"
-            autocomplete="new-password"
-          />
-        </label>
-        <p v-if="emailError" class="error-message">{{ emailError }}</p>
+          <label class="field">
+            <span class="label-text">{{ t((s) => s.common.email) }}</span>
+            <input
+              v-model="email"
+              type="email"
+              class="input"
+              :class="{ 'input-invalid': emailError }"
+              :placeholder="t((s) => s.setup.emailPlaceholder)"
+              autocomplete="username"
+            />
+          </label>
+          <label class="field">
+            <span class="label-text">{{ t((s) => s.common.password) }}</span>
+            <input
+              v-model="password"
+              type="password"
+              class="input"
+              :placeholder="t((s) => s.common.passwordPlaceholder)"
+              minlength="6"
+              autocomplete="new-password"
+            />
+          </label>
+          <p v-if="emailError" class="error-message">{{ emailError }}</p>
 
-        <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+          <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+        </div>
 
-        <button
-          type="submit"
-          :class="hasAccountDetails ? 'btn-submit' : 'btn-train-locally'"
-          :disabled="isSubmitting"
-        >
-          <template v-if="isSubmitting">{{ t((s) => s.setup.creating) }}</template>
-          <template v-else-if="hasAccountDetails">{{ t((s) => s.setup.createAccount) }}</template>
-          <template v-else>{{ t((s) => s.setup.continueWithoutAccount) }}</template>
-        </button>
-        <button
-          v-if="errorMessage && hasAccountDetails"
-          type="button"
-          class="btn-train-locally"
-          :disabled="isSubmitting"
-          @click="finishSetup"
-        >
-          {{ t((s) => s.setup.continueWithoutAccount) }}
-        </button>
+        <div class="step-actions">
+          <button
+            type="submit"
+            :class="hasAccountDetails ? 'btn-submit' : 'btn-train-locally'"
+            :disabled="isSubmitting"
+          >
+            <template v-if="isSubmitting">{{ t((s) => s.setup.creating) }}</template>
+            <template v-else-if="hasAccountDetails">{{ t((s) => s.setup.createAccount) }}</template>
+            <template v-else>{{ t((s) => s.setup.continueWithoutAccount) }}</template>
+          </button>
+          <button
+            v-if="errorMessage && hasAccountDetails"
+            type="button"
+            class="btn-train-locally"
+            :disabled="isSubmitting"
+            @click="finishSetup"
+          >
+            {{ t((s) => s.setup.continueWithoutAccount) }}
+          </button>
+        </div>
       </form>
 
       <div v-else class="confirmation-notice">
-        <button type="button" class="btn-back" @click="backToAccount">
-          {{ t((s) => s.setup.back) }}
-        </button>
+        <div class="step-content">
+          <button type="button" class="btn-back" @click="backToAccount">
+            {{ t((s) => s.setup.back) }}
+          </button>
 
-        <p>
-          {{ t((s) => s.setup.confirmationIntro) }} <strong>{{ confirmationSentTo }}</strong
-          >{{ t((s) => s.setup.confirmationOutro) }}
-        </p>
-        <p v-if="loginError" class="error-message">{{ loginError }}</p>
-        <button
-          type="button"
-          class="btn-submit"
-          :disabled="isLoggingIn"
-          @click="attemptLoginAfterConfirmation"
-        >
-          {{ isLoggingIn ? t((s) => s.setup.checking) : t((s) => s.setup.logInNow) }}
-        </button>
-        <button
-          type="button"
-          class="btn-train-locally"
-          :disabled="isLoggingIn"
-          @click="finishSetup"
-        >
-          {{ t((s) => s.setup.trainLocally) }}
-        </button>
+          <p>
+            {{ t((s) => s.setup.confirmationIntro) }} <strong>{{ confirmationSentTo }}</strong
+            >{{ t((s) => s.setup.confirmationOutro) }}
+          </p>
+          <p v-if="loginError" class="error-message">{{ loginError }}</p>
+        </div>
+
+        <div class="step-actions">
+          <button
+            type="button"
+            class="btn-submit"
+            :disabled="isLoggingIn"
+            @click="attemptLoginAfterConfirmation"
+          >
+            {{ isLoggingIn ? t((s) => s.setup.checking) : t((s) => s.setup.logInNow) }}
+          </button>
+          <button
+            type="button"
+            class="btn-train-locally"
+            :disabled="isLoggingIn"
+            @click="finishSetup"
+          >
+            {{ t((s) => s.setup.trainLocally) }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -468,6 +493,8 @@ async function submitSignIn(): Promise<void> {
 }
 
 .modal {
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -475,6 +502,9 @@ async function submitSignIn(): Promise<void> {
   width: 100%;
   min-width: 0;
   max-width: 420px;
+  /* Keeps the dialog's overall height stable as the user steps through the
+     wizard, so the "continue" button doesn't jump around between steps. */
+  min-height: 440px;
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
@@ -487,6 +517,7 @@ async function submitSignIn(): Promise<void> {
 @media (max-width: 480px), (max-height: 700px) {
   .modal {
     padding: 1.25rem;
+    min-height: 0;
   }
 
   .form {
@@ -577,6 +608,8 @@ h2 {
 .confirmation-notice {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  justify-content: space-between;
   gap: 1rem;
 }
 
@@ -590,7 +623,21 @@ h2 {
 .form {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  justify-content: space-between;
   gap: 1.25rem;
+}
+
+.step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.step-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .field {
