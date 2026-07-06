@@ -581,8 +581,12 @@ function showHistoryPosition(soundFallback?: HistoryEntry): void {
   } else {
     const atLatest = historyIndex.value === historyEntries.value.length - 1
     if (atLatest) {
+      // Stepping back to a resumable position reassigns `chess` to that historical
+      // position, and stepping forward through a non-resumable entry leaves it there —
+      // so on returning to the latest entry, `chess` may be stale and must be rebuilt.
+      if (chess.fen() !== entry.fen) chess = rebuildChessAtLatestEntry()
       setCgState({
-        fen: boardFen(chess.fen()),
+        fen: boardFen(entry.fen),
         lastMove: entry.lastMove,
         turnColor: toColor(chess.turn()),
         movable: isGameOver.value
@@ -610,6 +614,21 @@ function showHistoryPosition(soundFallback?: HistoryEntry): void {
     }
   }
   onPositionChanged()
+}
+
+// Replays the full recorded game instead of just loading the latest FEN, so chess.js's
+// internal position history (needed for threefold-repetition detection) is preserved.
+function rebuildChessAtLatestEntry(): Chess {
+  const { fen, moves } = getPositionArgs(historyEntries.value.length - 1)
+  const rebuilt = new Chess(fen)
+  for (const uci of moves) {
+    rebuilt.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: uci[4] as PromotionPiece | undefined,
+    })
+  }
+  return rebuilt
 }
 
 function requestPromotion(dest: Key, color: PlayerColor): Promise<PromotionPiece | null> {
