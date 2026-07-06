@@ -13,7 +13,10 @@ export function isOutsidePuzzleGoal(
   scoreMate: number | null,
   tablebaseCategory: TablebaseCategory | null,
 ): boolean {
-  if (tablebaseCategory !== null) {
+  // 'unknown' means the tablebase data is incomplete for this position (e.g. a move
+  // without a category poisons the aggregate) — it is not a verdict, so fall through
+  // to the engine evaluation instead of treating it as worse than any real outcome.
+  if (tablebaseCategory !== null && tablebaseCategory !== 'unknown') {
     if (goal === 'win') return CATEGORY_RANK[tablebaseCategory] <= CATEGORY_RANK['cursed-win']
     if (goal === 'draw') return CATEGORY_RANK[tablebaseCategory] <= CATEGORY_RANK['syzygy-loss']
     return false
