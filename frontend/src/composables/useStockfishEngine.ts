@@ -69,6 +69,17 @@ function createEngine(): StockfishEngine {
     return moves.length > 0 ? `position fen ${fen} moves ${moves.join(' ')}` : `position fen ${fen}`
   }
 
+  // Best-move searches must always run single-line: an aborted analysis search never
+  // reaches the MultiPV reset in the bestmove handler, so without setting it here a
+  // leftover MultiPV=3 would leak into play and skew the position evaluation.
+  function launchBestMoveSearch(pb: PendingBestMove): void {
+    isThinking.value = true
+    resolveBestMove = pb.resolve
+    worker.postMessage('setoption name MultiPV value 1')
+    worker.postMessage(positionCommand(pb.fen, pb.moves))
+    worker.postMessage(`go movetime ${pb.thinkingTimeMs}`)
+  }
+
   function launchSearch(ps: PendingSearch): void {
     isThinking.value = true
     analysisLines = new Map()
@@ -90,7 +101,6 @@ function createEngine(): StockfishEngine {
 
     worker.onmessage = (event: MessageEvent<string>) => {
       const line = event.data
-
       if (line === 'uciok') {
         worker.postMessage('isready')
       } else if (line === 'readyok') {
@@ -107,8 +117,18 @@ function createEngine(): StockfishEngine {
         const depthMatch = line.match(/depth (\d+)/)
         const pvMatch = line.match(/ pv (.+)$/)
 
-        if (cpMatch) lastScoreCP = parseInt(cpMatch[1] ?? '0')
-        else if (mateMatch) lastScoreMate = parseInt(mateMatch[1] ?? '0')
+        const lineScoreCP = cpMatch ? parseInt(cpMatch[1] ?? '0') : null
+        const lineScoreMate = mateMatch ? parseInt(mateMatch[1] ?? '0') : null
+
+        // Only the best line's score may become the position's evaluation — with
+        // MultiPV > 1 the later lines are deliberately worse moves, and letting them
+        // overwrite the score would misreport the position (e.g. a winning position
+        // looking drawn because the third-best move only keeps a small edge).
+        const isBestLine = !multipvMatch || multipvMatch[1] === '1'
+        if (isBestLine && (cpMatch || mateMatch)) {
+          lastScoreCP = lineScoreCP
+          lastScoreMate = lineScoreMate
+        }
 
         if (multipvMatch && pvMatch) {
           const multipvIndex = parseInt(multipvMatch[1] ?? '1')
@@ -118,8 +138,8 @@ function createEngine(): StockfishEngine {
           if (!existing || depth >= existing.depth) {
             analysisLines.set(multipvIndex, {
               moves,
-              scoreCP: cpMatch ? lastScoreCP : null,
-              scoreMate: mateMatch ? lastScoreMate : null,
+              scoreCP: lineScoreCP,
+              scoreMate: lineScoreMate,
               depth,
               multipvIndex,
             })
@@ -150,10 +170,7 @@ function createEngine(): StockfishEngine {
           } else if (pendingBestMove) {
             const pb = pendingBestMove
             pendingBestMove = null
-            isThinking.value = true
-            resolveBestMove = pb.resolve
-            worker.postMessage(positionCommand(pb.fen, pb.moves))
-            worker.postMessage(`go movetime ${pb.thinkingTimeMs}`)
+            launchBestMoveSearch(pb)
           } else {
             isThinking.value = false
           }
@@ -242,11 +259,8 @@ function createEngine(): StockfishEngine {
       })
     }
 
-    isThinking.value = true
     return new Promise<EngineEvaluation>((resolve) => {
-      resolveBestMove = resolve
-      worker.postMessage(positionCommand(fen, moves))
-      worker.postMessage(`go movetime ${thinkingTimeMs}`)
+      launchBestMoveSearch({ fen, moves, thinkingTimeMs, resolve })
     })
   }
 

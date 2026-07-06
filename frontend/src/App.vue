@@ -173,8 +173,7 @@ onMounted(async () => {
     if (route.view === 'analysis' && currentExercise.value) {
       isAnalysisMode.value = true
       await nextTick()
-      boardRef.value?.enterAnalysisMode()
-      applyAnalysisPreferences()
+      startAnalysisMode()
     }
     if (currentExercise.value) {
       history.replaceState(
@@ -243,8 +242,7 @@ function handlePopState(): void {
     if (route.view === 'analysis') {
       isAnalysisMode.value = true
       nextTick(() => {
-        boardRef.value?.enterAnalysisMode()
-        applyAnalysisPreferences()
+        startAnalysisMode()
       }).catch(() => undefined)
     }
   } else {
@@ -254,8 +252,7 @@ function handlePopState(): void {
     if (enterAnalysis) {
       isAnalysisMode.value = true
       nextTick(() => {
-        boardRef.value?.enterAnalysisMode()
-        applyAnalysisPreferences()
+        startAnalysisMode()
       }).catch(() => undefined)
     } else if (leaveAnalysis) {
       isAnalysisMode.value = false
@@ -399,14 +396,16 @@ function onSurrender(): void {
   audio.playFailureSound()
 }
 
-// Applies the user's remembered analysis-mode preferences (engine pause, tablebase
-// expansion). Called right after entering analysis mode, since ChessBoard.enterAnalysisMode()
-// always starts unpaused and the panel always starts collapsed.
-function applyAnalysisPreferences(): void {
+// Enters analysis mode with the user's remembered preferences (engine pause, tablebase
+// expansion) already applied. The pause state must be passed into enterAnalysisMode()
+// rather than set afterwards: entering unpaused would launch an engine search that a
+// follow-up pause cannot reliably cancel (the search starts asynchronously), leaving
+// the engine burning CPU in the background with its results discarded.
+function startAnalysisMode(): void {
   const paused = profile.value?.analysisEnginePaused ?? false
   analysisPaused.value = paused
-  if (paused) boardRef.value?.setAnalysisPaused(true)
   analysisTablebaseExpanded.value = profile.value?.tablebaseMovesExpanded ?? false
+  boardRef.value?.enterAnalysisMode(paused)
 }
 
 function onAnalyse(): void {
@@ -416,8 +415,7 @@ function onAnalyse(): void {
     audio.playFailureSound()
   }
   isAnalysisMode.value = true
-  boardRef.value?.enterAnalysisMode()
-  applyAnalysisPreferences()
+  startAnalysisMode()
   history.pushState(null, '', buildRouteUrl('analysis', currentRawFen.value))
 }
 

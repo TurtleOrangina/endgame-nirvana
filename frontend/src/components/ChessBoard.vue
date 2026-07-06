@@ -1190,9 +1190,9 @@ function onKeyDown(e: KeyboardEvent): void {
 // Deliberately leaves the board exactly where it is — jumping to move 0 caused vertigo when
 // the user only wanted to glance at the last few moves. A "First Move" nav button already
 // covers the case where they do want the start.
-function enterAnalysisMode(): void {
+function enterAnalysisMode(startPaused = false): void {
   if (!chess || !cg) return
-  analysisPaused.value = false
+  analysisPaused.value = startPaused
   isAnalysisMode.value = true
   cg.set({
     movable: { color: 'both', free: false, dests: buildDests(chess) },
@@ -1206,6 +1206,7 @@ function enterAnalysisMode(): void {
 function leaveAnalysisMode(): void {
   if (!chess || !cg) return
   cancelPendingPromotion()
+  engine.stopAnalysis()
   moveGeneration++
   const gen = moveGeneration
   isAnalysisMode.value = false
@@ -1246,7 +1247,6 @@ function loadFen(fen: string): boolean {
   setupBoard(parsed.fen())
   if (!chess || !cg) return false
   isAnalysisMode.value = true
-  analysisPaused.value = false
   cg.set({ movable: { color: 'both', free: false, dests: buildDests(chess) } })
   onPositionChanged()
   return true
@@ -1455,6 +1455,7 @@ defineExpose({
     transform: scale(0);
     opacity: 0;
   }
+
   to {
     transform: scale(1);
     opacity: 1;
@@ -1496,14 +1497,17 @@ defineExpose({
     opacity: 0;
     transform: scale(0.7);
   }
+
   12% {
     opacity: 1;
     transform: scale(1);
   }
+
   80% {
     opacity: 1;
     transform: scale(1);
   }
+
   100% {
     opacity: 0;
     transform: scale(1.1);
