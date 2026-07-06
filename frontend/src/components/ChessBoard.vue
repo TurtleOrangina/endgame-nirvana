@@ -551,6 +551,14 @@ function endGame(result: GameResult): void {
   emit('game-over', result)
 }
 
+// Outside analysis mode, browsing history is normally read-only — but while retrying
+// (not a rated attempt), the player is allowed to play a different move than they
+// originally did, provided it's genuinely their move at that position (never the
+// computer's), branching the history from there.
+function canResumeFromHistory(): boolean {
+  return !!chess && !props.isRatedAttempt && toColor(chess.turn()) === playerColor
+}
+
 function showHistoryPosition(soundFallback?: HistoryEntry): void {
   if (!cg || !chess) return
   const entry = historyEntries.value[historyIndex.value]
@@ -582,11 +590,23 @@ function showHistoryPosition(soundFallback?: HistoryEntry): void {
           : { color: playerColor, free: false, dests: buildDests(chess) },
       })
     } else {
-      setCgState({
-        fen: boardFen(entry.fen),
-        lastMove: entry.lastMove,
-        movable: { color: undefined },
-      })
+      const historyChess = new Chess(entry.fen)
+      const canResumeHere = !props.isRatedAttempt && toColor(historyChess.turn()) === playerColor
+      if (canResumeHere) {
+        chess = historyChess
+        setCgState({
+          fen: boardFen(entry.fen),
+          lastMove: entry.lastMove,
+          turnColor: playerColor,
+          movable: { color: playerColor, free: false, dests: buildDests(chess) },
+        })
+      } else {
+        setCgState({
+          fen: boardFen(entry.fen),
+          lastMove: entry.lastMove,
+          movable: { color: undefined },
+        })
+      }
     }
   }
   onPositionChanged()
@@ -1031,8 +1051,9 @@ async function processPlayerMove(
   const playerMoveSound = classifyMoveSound(playerMove, chess)
   boardAudio.play(playerMoveSound)
 
-  if (isAnalysisMode.value && isViewingHistory()) {
+  if (isViewingHistory()) {
     historyEntries.value = historyEntries.value.slice(0, historyIndex.value + 1)
+    if (!isAnalysisMode.value) isGameOver.value = false
   }
   pushHistory({
     fen: chess.fen(),
@@ -1073,7 +1094,7 @@ async function processPlayerMove(
 
 function onAfterMove(orig: Key, dest: Key, metadata: MoveMetadata): void {
   if (engineMovePending) return
-  if (isViewingHistory() && !isAnalysisMode.value) return
+  if (isViewingHistory() && !isAnalysisMode.value && !canResumeFromHistory()) return
   processPlayerMove(orig, dest, undefined, metadata.premove)
 }
 
