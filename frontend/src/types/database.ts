@@ -8,36 +8,30 @@ export type Database = {
           attempted_at: string
           client_attempt_id: string
           elo_change: number
-          id: number
           new_elo: number
           puzzle_id: string | null
           solved: boolean
           transform_code: string | null
-          user_elo_before: number
           user_id: string
         }
         Insert: {
           attempted_at: string
           client_attempt_id: string
           elo_change: number
-          id?: never
           new_elo: number
           puzzle_id?: string | null
           solved: boolean
           transform_code?: string | null
-          user_elo_before: number
           user_id: string
         }
         Update: {
           attempted_at?: string
           client_attempt_id?: string
           elo_change?: number
-          id?: never
           new_elo?: number
           puzzle_id?: string | null
           solved?: boolean
           transform_code?: string | null
-          user_elo_before?: number
           user_id?: string
         }
         Relationships: [
@@ -54,7 +48,6 @@ export type Database = {
         Row: {
           endgame_elo: number
           id: string
-          puzzles_attempted: number
           puzzles_failed: number
           puzzles_solved: number
           settings: Json
@@ -64,7 +57,6 @@ export type Database = {
         Insert: {
           endgame_elo: number
           id: string
-          puzzles_attempted?: number
           puzzles_failed?: number
           puzzles_solved?: number
           settings?: Json
@@ -74,7 +66,6 @@ export type Database = {
         Update: {
           endgame_elo?: number
           id?: string
-          puzzles_attempted?: number
           puzzles_failed?: number
           puzzles_solved?: number
           settings?: Json

@@ -75,7 +75,6 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     profile.value = {
       username,
       endgameElo: startElo,
-      puzzlesAttempted: 0,
       puzzlesSolved: 0,
       puzzlesFailed: 0,
       eloHistory: [],
@@ -101,14 +100,14 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     const p = profile.value
     if (!p) return
 
-    const k = Math.max(16, 64 - p.puzzlesAttempted * 0.5)
+    const puzzlesAttempted = p.puzzlesSolved + p.puzzlesFailed
+    const k = Math.max(16, 64 - puzzlesAttempted * 0.5)
     const expected = 1 / (1 + Math.pow(10, (exerciseDifficulty - p.endgameElo) / 400))
     const actual = solved ? 1 : 0
     const delta = Math.round(k * (actual - expected))
 
     const eloBefore = p.endgameElo
     p.endgameElo += delta
-    p.puzzlesAttempted++
     if (solved) {
       p.puzzlesSolved++
       sessionSolved.value++
@@ -211,7 +210,8 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     profile.value = {
       username: remote.username,
       endgameElo: remote.endgame_elo,
-      puzzlesAttempted: remote.puzzles_attempted,
+      // Counters are server-derived from synced attempts (record_attempts
+      // increments them), no longer client-reported.
       puzzlesSolved: remote.puzzles_solved,
       puzzlesFailed: remote.puzzles_failed,
       eloHistory: [...attempts].reverse().map((row) => ({

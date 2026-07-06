@@ -107,11 +107,27 @@ export const useSyncStore = defineStore('sync', () => {
     persistPuzzleEloOverrides(puzzleEloOverrides.value)
   }
 
+  let inFlightFlush: Promise<void> | null = null
+
+  // Concurrent callers await the same in-flight flush instead of silently
+  // no-oping — pullRemoteState relies on `await flush()` meaning "pending local
+  // state was actually pushed (or failed, setting lastSyncError)" before it
+  // lets the pulled cloud profile overwrite the local one. A no-op return here
+  // let a stale pull win the moment the real flush cleared profileDirty.
+  function flush(): Promise<void> {
+    if (!inFlightFlush) {
+      inFlightFlush = performFlush().finally(() => {
+        inFlightFlush = null
+      })
+    }
+    return inFlightFlush
+  }
+
   // At most 2 requests per flush: one record_attempts RPC for the outbox, one
   // profiles update if dirty. Never throws — failures leave outbox/profileDirty
   // untouched so the next debounced/manual flush retries.
-  async function flush(): Promise<void> {
-    if (!supabase || isSyncing.value) return
+  async function performFlush(): Promise<void> {
+    if (!supabase) return
     if (outbox.value.length === 0 && !profileDirty.value) return
 
     isSyncing.value = true
@@ -137,11 +153,11 @@ export const useSyncStore = defineStore('sync', () => {
           const { data, error } = await supabase
             .from('profiles')
             .update({
+              // Puzzle counters are deliberately absent: they're server-derived
+              // by record_attempts, and the client's update grant no longer
+              // covers those columns.
               username: profile.username,
               endgame_elo: profile.endgameElo,
-              puzzles_attempted: profile.puzzlesAttempted,
-              puzzles_solved: profile.puzzlesSolved,
-              puzzles_failed: profile.puzzlesFailed,
               settings: {
                 difficultyPreference: profile.difficultyPreference,
                 analysisEnginePaused: profile.analysisEnginePaused,

@@ -63,7 +63,6 @@ export type Language = 'en' | 'de'
 export interface UserProfile {
   username: string
   endgameElo: number
-  puzzlesAttempted: number
   puzzlesSolved: number
   puzzlesFailed: number
   eloHistory: EloHistoryEntry[]
