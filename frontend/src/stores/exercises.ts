@@ -530,7 +530,10 @@ export const useExercisesStore = defineStore('exercises', () => {
       return
     }
 
-    const weights = pool.map((ex) => 1 / (Math.abs(parseInt(ex.difficulty) - userElo) + 1))
+    const weights = pool.map((ex) => {
+      const delta = Math.abs(userElo - parseInt(ex.difficulty))
+      return 1 / (1 + 10 ** (delta / 100))
+    })
     const totalWeight = weights.reduce((sum, w) => sum + w, 0)
     let rand = Math.random() * totalWeight
     let chosen = pool[pool.length - 1]

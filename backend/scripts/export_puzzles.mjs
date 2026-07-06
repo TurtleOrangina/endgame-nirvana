@@ -95,17 +95,23 @@ async function fetchPuzzles(supabaseUrl, secretKey) {
 }
 
 // Groups the flat puzzle rows back into the { "/category/path": [exercise, ...] }
-// shape exercises.json uses, inverting seed_puzzles.mjs's loadPuzzles.
+// shape exercises.json uses, inverting seed_puzzles.mjs's loadPuzzles. Sorted by
+// category path, then by fen within each category, so the output is deterministic.
 function toExercisesJson(puzzles) {
-  const data = {}
+  const grouped = {}
   for (const puzzle of puzzles) {
     const path = `/${puzzle.category_path}`
-    const exercises = data[path] ?? (data[path] = [])
+    const exercises = grouped[path] ?? (grouped[path] = [])
     exercises.push({
       fen: puzzle.id.replaceAll(' ', '_'),
       expected_result: puzzle.expected_result,
       difficulty: puzzle.current_elo,
     })
+  }
+
+  const data = {}
+  for (const path of Object.keys(grouped).sort()) {
+    data[path] = grouped[path].sort((a, b) => a.fen.localeCompare(b.fen))
   }
   return data
 }
