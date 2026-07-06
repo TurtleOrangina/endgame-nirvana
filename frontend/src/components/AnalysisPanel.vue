@@ -307,6 +307,7 @@ function submitFen(event: KeyboardEvent): void {
         @mouseleave="emit('hover-move', null)"
         @touchend="emit('hover-move', null)"
         @touchcancel="emit('hover-move', null)"
+        @click="line.moves[0] && emit('execute-move', line.moves[0])"
       >
         <span class="line-score">{{ score }}</span>
         <span class="line-moves" :class="isExpanded(i) ? 'expanded' : 'collapsed'">{{
@@ -315,7 +316,7 @@ function submitFen(event: KeyboardEvent): void {
         <button
           class="expand-btn"
           :title="isExpanded(i) ? t((s) => s.common.collapse) : t((s) => s.common.expand)"
-          @click="toggleExpand(i)"
+          @click.stop="toggleExpand(i)"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -585,6 +586,12 @@ function submitFen(event: KeyboardEvent): void {
   padding: 0.25rem 0;
   border-bottom: 1px solid var(--border);
   min-width: 0;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.engine-line:hover {
+  background: var(--hover-bg);
 }
 
 .engine-line:last-child {
