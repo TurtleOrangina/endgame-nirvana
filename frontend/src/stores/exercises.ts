@@ -226,6 +226,9 @@ export const useExercisesStore = defineStore('exercises', () => {
   const selectedCategory = ref<string | null>(loadSelectedCategory())
   const isLoading = ref(true)
   const initialPieceCount = ref<number | null>(null)
+  // True when the URL requested a specific puzzle (?puzzle=<fen>) that doesn't exist in
+  // the catalog — shown as an "unknown puzzle" state instead of silently picking a random one.
+  const requestedPuzzleNotFound = ref(false)
 
   // Renders instantly from the localStorage cache if present (so the app works fully
   // offline after the first successful load and never blocks on a fetch), then always
@@ -233,22 +236,29 @@ export const useExercisesStore = defineStore('exercises', () => {
   // since the manifest indirection means this is usually a fast, aggressively cached
   // network round trip rather than a real download (see fetchPuzzleCatalog).
   async function load(initialFen?: string): Promise<void> {
+    const requestedId = initialFen?.replaceAll('_', ' ') ?? null
     const cache = loadExercisesCache()
     if (cache) {
       allExercises.value = buildExercises(cache.puzzles)
       isLoading.value = false
-      if (!initialFen || !selectById(initialFen.replaceAll('_', ' '))) {
-        selectRandom()
-      }
-      void refreshExerciseCatalog(initialFen)
+      selectInitial(requestedId)
+      void refreshExerciseCatalog(requestedId)
       return
     }
 
-    await refreshExerciseCatalog(initialFen)
+    await refreshExerciseCatalog(requestedId)
     isLoading.value = false
   }
 
-  async function refreshExerciseCatalog(initialFen?: string): Promise<void> {
+  function selectInitial(requestedId: string | null): void {
+    if (requestedId) {
+      requestedPuzzleNotFound.value = !selectById(requestedId)
+    } else {
+      selectRandom()
+    }
+  }
+
+  async function refreshExerciseCatalog(requestedId: string | null = null): Promise<void> {
     const puzzles = await fetchPuzzleCatalog()
     if (!puzzles) return
 
@@ -256,12 +266,20 @@ export const useExercisesStore = defineStore('exercises', () => {
     allExercises.value = buildExercises(puzzles)
 
     if (currentExerciseId.value === null) {
-      if (!initialFen || !selectById(initialFen.replaceAll('_', ' '))) {
+      // Retry a not-yet-found requested puzzle against the fresh catalog before
+      // giving up on it; a still-unknown id keeps the "unknown puzzle" state.
+      if (requestedId && selectById(requestedId)) {
+        requestedPuzzleNotFound.value = false
+      } else if (!requestedPuzzleNotFound.value) {
         selectRandom()
       }
-    } else {
-      reselectIfCurrentInvalid()
+      return
     }
+
+    // A background refresh must never swap out the puzzle already on the board
+    // (it may have been opened via a shared link, or be mid-solve); only re-roll
+    // if it no longer exists in the fresh catalog at all.
+    if (currentExercise.value === null) selectRandom()
   }
 
   // Hard filter applied over the entire exercise pool, before category selection, based on the
@@ -502,6 +520,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   })
 
   function selectRandom(eloOverride?: number): void {
+    requestedPuzzleNotFound.value = false
     const userElo = eloOverride ?? useUserProfileStore().profile?.endgameElo ?? 1400
 
     const pool = filteredExercises.value
@@ -573,6 +592,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   function selectById(id: string): boolean {
     const exercise = allExercises.value.find((ex) => ex.id === id)
     if (!exercise) return false
+    requestedPuzzleNotFound.value = false
     const code = pickRandomTransformCode(exercise.fen)
     currentTransformCode.value = code
     currentTransformedFen.value = applyTransformCode(exercise.fen, code)
@@ -587,6 +607,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   function selectByIdWithTransform(id: string, code: string): boolean {
     const exercise = allExercises.value.find((ex) => ex.id === id)
     if (!exercise) return false
+    requestedPuzzleNotFound.value = false
     currentTransformCode.value = code
     currentTransformedFen.value = applyTransformCode(exercise.fen, code)
     currentExerciseId.value = id
@@ -637,6 +658,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     currentExercise,
     currentTransformedFen,
     currentTransformCode,
+    requestedPuzzleNotFound,
     categoryPuzzleTotal,
     categoryPuzzleSolved,
     categoryPuzzleFailed,

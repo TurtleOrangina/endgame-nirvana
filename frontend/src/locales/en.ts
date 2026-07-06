@@ -40,6 +40,8 @@ export const en = {
     resultLoss: 'loss',
     progressSummary: '{solved} solved · {failed} failed · {left} left',
     noMatchingExercises: 'No exercises match the current filters.',
+    unknownPuzzle: 'Unknown puzzle — the link may be outdated or the puzzle no longer exists.',
+    unknownPuzzleNext: 'Pick a random puzzle',
     allSolvedInCategory: '🎉 You have solved all exercises in this category 🎉',
     hiddenTooHard: '{count} puzzles are hidden because they are too hard for your level.',
     allowSolvingTooHard: 'Allow solving of too hard puzzles',

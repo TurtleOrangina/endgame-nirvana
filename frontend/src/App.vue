@@ -46,6 +46,7 @@ const {
   categoryPuzzleUnattempted,
   categoryHiddenCounts,
   selectedCategory,
+  requestedPuzzleNotFound,
 } = storeToRefs(store)
 
 // The FEN the board actually renders — transformed for variety.
@@ -955,7 +956,14 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                 </div>
               </section>
 
-              <div v-if="!currentExercise && categoryExercises.length === 0" class="empty">
+              <div v-if="requestedPuzzleNotFound" class="empty">
+                <p>{{ t((s) => s.app.unknownPuzzle) }}</p>
+                <button class="btn-action" @click="store.advanceToNext()">
+                  {{ t((s) => s.app.unknownPuzzleNext) }}
+                </button>
+              </div>
+
+              <div v-else-if="!currentExercise && categoryExercises.length === 0" class="empty">
                 {{ t((s) => s.app.noMatchingExercises) }}
               </div>
 

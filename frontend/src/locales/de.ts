@@ -42,6 +42,9 @@ export const de: typeof en = {
     resultLoss: 'Verlust',
     progressSummary: '{solved} gelöst · {failed} falsch · {left} übrig',
     noMatchingExercises: 'Keine Übungen entsprechen den aktuellen Filtern.',
+    unknownPuzzle:
+      'Unbekannte Aufgabe — der Link ist möglicherweise veraltet oder die Aufgabe existiert nicht mehr.',
+    unknownPuzzleNext: 'Zufällige Aufgabe wählen',
     allSolvedInCategory: '🎉 Du hast alle Übungen in dieser Kategorie gelöst 🎉',
     hiddenTooHard: '{count} Aufgaben sind ausgeblendet, weil sie zu schwer für dein Rating sind.',
     allowSolvingTooHard: 'Auch zu schwere Aufgaben zum Lösen zulassen',
