@@ -10,6 +10,9 @@ export const de: typeof en = {
     collapse: 'Einklappen',
     unlink: 'Trennen',
     enterValidEmail: 'Gib eine gültige E-Mail-Adresse ein.',
+    forgotPassword: 'Passwort vergessen?',
+    resetEmailSent:
+      'Eine E-Mail zum Zurücksetzen des Passworts wurde an {email} gesendet. Klicke auf den Link darin, um ein neues Passwort zu wählen.',
   },
   app: {
     loadingExercises: 'Übungen werden geladen…',
@@ -159,6 +162,11 @@ export const de: typeof en = {
       'Gib E-Mail und Passwort ein, oder lass beides leer, um lokal zu trainieren.',
     errorSignupFailed:
       'Dein Konto konnte nicht erstellt werden. Du kannst es erneut versuchen oder ohne Konto fortfahren und es später auf deiner Profilseite erneut versuchen.',
+    errorInvalidCredentials:
+      'E-Mail oder Passwort falsch. Wenn du dein Passwort vergessen hast, kannst du es per E-Mail zurücksetzen.',
+    emailAlreadyRegistered: 'Diese E-Mail-Adresse ist bereits registriert.',
+    logInInstead: 'Stattdessen anmelden',
+    sendResetEmail: 'Passwort per E-Mail zurücksetzen',
   },
   profile: {
     backToTraining: 'Zurück zum Training',
@@ -178,7 +186,8 @@ export const de: typeof en = {
     pendingIntro: 'Die Kontoerstellung für',
     pendingOutro:
       'ist noch nicht abgeschlossen — gib dein Passwort ein, um es erneut zu versuchen.',
-    forgotPassword: 'Passwort vergessen?',
+    emailAlreadyRegistered:
+      'Diese E-Mail-Adresse ist bereits registriert. Nutze „Passwort vergessen?“ unten, um es per E-Mail zurückzusetzen und dich anzumelden.',
     solveProgress: 'Lösungsfortschritt',
     noExercisesSolved: 'Noch keine Übungen gelöst.',
     puzzleHistory: 'Aufgabenverlauf',
@@ -229,6 +238,8 @@ export const de: typeof en = {
     title: 'Wähle ein neues Passwort',
     subtitle: 'Gib ein neues Passwort für dein Konto ein.',
     newPasswordLabel: 'Neues Passwort',
+    linkInvalid:
+      'Dieser Link zum Zurücksetzen des Passworts ist ungültig oder abgelaufen. Bitte fordere einen neuen an.',
     saving: 'Wird gespeichert…',
     savePassword: 'Passwort speichern',
   },

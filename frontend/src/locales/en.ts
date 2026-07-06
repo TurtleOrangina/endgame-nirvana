@@ -8,6 +8,9 @@ export const en = {
     collapse: 'Collapse',
     unlink: 'Unlink',
     enterValidEmail: 'Enter a valid email address.',
+    forgotPassword: 'Forgot password?',
+    resetEmailSent:
+      'A password reset email was sent to {email}. Click the link in it to choose a new password.',
   },
   app: {
     loadingExercises: 'Loading exercises…',
@@ -155,6 +158,11 @@ export const en = {
     errorBothOrNeither: 'Enter both an email and password, or leave both blank to train locally.',
     errorSignupFailed:
       'Could not create your account. You can retry, or continue without an account and retry later from your profile page.',
+    errorInvalidCredentials:
+      'Wrong email or password. If you have forgotten your password, you can reset it via email.',
+    emailAlreadyRegistered: 'This email is already registered.',
+    logInInstead: 'Log in instead',
+    sendResetEmail: 'Reset password via email',
   },
   profile: {
     backToTraining: 'Back to Training',
@@ -172,7 +180,8 @@ export const en = {
     createAccountTitle: 'Create Account',
     pendingIntro: 'Account creation for',
     pendingOutro: "hasn't completed yet — enter your password to retry.",
-    forgotPassword: 'Forgot password?',
+    emailAlreadyRegistered:
+      'This email is already registered. Use "Forgot password?" below to reset it via email and sign in.',
     solveProgress: 'Solve Progress',
     noExercisesSolved: 'No exercises solved yet.',
     puzzleHistory: 'Puzzle History',
@@ -223,6 +232,7 @@ export const en = {
     title: 'Choose a new password',
     subtitle: 'Enter a new password for your account.',
     newPasswordLabel: 'New password',
+    linkInvalid: 'This password reset link is invalid or has expired. Please request a new one.',
     saving: 'Saving…',
     savePassword: 'Save Password',
   },

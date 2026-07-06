@@ -24,36 +24,46 @@ async function submit(): Promise<void> {
   <div class="modal-overlay">
     <div class="modal">
       <h2>{{ t((s) => s.passwordRecovery.title) }}</h2>
-      <p class="subtitle">{{ t((s) => s.passwordRecovery.subtitle) }}</p>
 
-      <form class="form" @submit.prevent="submit">
-        <label class="field">
-          <span class="label-text">{{ t((s) => s.passwordRecovery.newPasswordLabel) }}</span>
-          <input
-            v-model="newPassword"
-            type="password"
-            class="input"
-            :placeholder="t((s) => s.common.passwordPlaceholder)"
-            minlength="6"
-            required
-            autofocus
-          />
-        </label>
-
-        <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
-
-        <button type="submit" class="btn-submit" :disabled="isSubmitting">
-          {{
-            isSubmitting
-              ? t((s) => s.passwordRecovery.saving)
-              : t((s) => s.passwordRecovery.savePassword)
-          }}
-        </button>
-
+      <template v-if="authStore.passwordRecoveryLinkInvalid">
+        <p class="error-message">{{ t((s) => s.passwordRecovery.linkInvalid) }}</p>
         <button type="button" class="btn-cancel" @click="authStore.dismissPasswordRecovery()">
           {{ t((s) => s.common.cancel) }}
         </button>
-      </form>
+      </template>
+
+      <template v-else>
+        <p class="subtitle">{{ t((s) => s.passwordRecovery.subtitle) }}</p>
+
+        <form class="form" @submit.prevent="submit">
+          <label class="field">
+            <span class="label-text">{{ t((s) => s.passwordRecovery.newPasswordLabel) }}</span>
+            <input
+              v-model="newPassword"
+              type="password"
+              class="input"
+              :placeholder="t((s) => s.common.passwordPlaceholder)"
+              minlength="6"
+              required
+              autofocus
+            />
+          </label>
+
+          <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+
+          <button type="submit" class="btn-submit" :disabled="isSubmitting">
+            {{
+              isSubmitting
+                ? t((s) => s.passwordRecovery.saving)
+                : t((s) => s.passwordRecovery.savePassword)
+            }}
+          </button>
+
+          <button type="button" class="btn-cancel" @click="authStore.dismissPasswordRecovery()">
+            {{ t((s) => s.common.cancel) }}
+          </button>
+        </form>
+      </template>
     </div>
   </div>
 </template>

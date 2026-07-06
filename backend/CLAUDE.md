@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working in `bac
 
 Self-hosted Supabase running via Docker Compose. Services: PostgreSQL, PostgREST, GoTrue (Auth), Realtime, Storage, Studio (dashboard), Kong (API gateway), Logflare (analytics), Edge Runtime, Supavisor (connection pooler).
 
+**This Docker stack is local dev only.** Production runs on **Supabase Cloud** (Free tier), with **Resend** (Free tier) configured as the SMTP provider for confirmation/password-reset emails. Free-tier caveats worth remembering: 500 MB max database size and 5 GB egress/month on Supabase, and 100 emails/day on Resend — all fine at current usage, but each is a potential limiter if the user base grows (or someone spams password-reset emails). See the root `CLAUDE.md`'s Deployment section.
+
 ## Important: Claude cannot run Docker commands
 
 Claude runs in an isolated container without access to the host Docker daemon. All file changes in `backend/` can be made directly, but **starting, stopping, or restarting services must be done by the user on the host machine**.
@@ -92,7 +94,7 @@ Puzzle data (fen, category, expected result, elo) has no direct client read path
 
 - `SITE_URL` → the frontend's origin (e.g. `http://localhost:5173` in dev).
 - `ADDITIONAL_REDIRECT_URLS` → any extra dev/preview origins that need to receive Supabase auth redirects.
-- `ENABLE_EMAIL_AUTOCONFIRM=true` — there's no SMTP configured yet, so signups must auto-confirm. Flip back to `false` once `SMTP_*` is set and the frontend's password-recovery flow is unhidden.
-- `SMTP_*` — leave as placeholders until an SMTP provider is wired up; the "forgot password" UI stays hidden until then.
+- `ENABLE_EMAIL_AUTOCONFIRM=true` — the local dev stack has no SMTP configured, so signups must auto-confirm. (Production is different: Supabase Cloud sends real confirmation/reset emails through Resend — see "What this is" above.)
+- `SMTP_*` — placeholders locally; password-reset emails therefore only work against production, not this stack.
 
 Restart the `auth` service after editing any of these: `sh run.sh restart auth`.

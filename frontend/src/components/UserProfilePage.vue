@@ -14,10 +14,6 @@ import CategoryProgressTree from '@/components/CategoryProgressTree.vue'
 import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
 import type { DifficultyPreference, EloHistoryEntry, Language, ThemeMode } from '@/types'
 
-// Forgot-password stays hidden until backend/.env has SMTP_* configured — see
-// backend_plan.md and backend/CLAUDE.md. Flip this once that's true.
-const SMTP_CONFIGURED = true
-
 const emit = defineEmits<{
   back: []
   'load-puzzle': [payload: { exerciseId: string; transformCode: string }]
@@ -39,6 +35,8 @@ const accountError = ref<string | null>(null)
 const accountEmailError = ref<string | null>(null)
 const confirmationRetrySubmitting = ref(false)
 const confirmationRetryError = ref<string | null>(null)
+const resetEmailSentTo = ref<string | null>(null)
+const isSendingResetEmail = ref(false)
 
 const accountSubmitLabel = computed(() => {
   if (authStore.pendingRegistration) {
@@ -69,13 +67,31 @@ async function onAccountSubmit(): Promise<void> {
       ))
   accountSubmitting.value = false
 
-  if (result.emailError) {
-    accountEmailError.value = result.emailError
+  if (result.emailAlreadyRegistered) {
+    accountEmailError.value = t((s) => s.profile.emailAlreadyRegistered)
   } else if (result.error) {
     accountError.value = result.error
   } else {
     accountPassword.value = ''
   }
+}
+
+async function onForgotPassword(): Promise<void> {
+  accountError.value = null
+  accountEmailError.value = null
+  const targetEmail = (authStore.pendingRegistration?.email ?? accountEmail.value).trim()
+  if (!isValidEmail(targetEmail)) {
+    accountEmailError.value = t((s) => s.common.enterValidEmail)
+    return
+  }
+  isSendingResetEmail.value = true
+  const result = await authStore.requestPasswordReset(targetEmail)
+  isSendingResetEmail.value = false
+  if (result.error) {
+    accountError.value = result.error
+    return
+  }
+  resetEmailSentTo.value = targetEmail
 }
 
 function onSignOut(): void {
@@ -279,10 +295,18 @@ function onCardClick(entry: EloHistoryEntry): void {
           </button>
         </form>
 
-        <p v-if="SMTP_CONFIGURED" class="section-desc">
-          <button type="button" class="btn-forgot-password">
-            {{ t((s) => s.profile.forgotPassword) }}
+        <p class="section-desc">
+          <button
+            type="button"
+            class="btn-forgot-password"
+            :disabled="isSendingResetEmail"
+            @click="onForgotPassword"
+          >
+            {{ t((s) => s.common.forgotPassword) }}
           </button>
+        </p>
+        <p v-if="resetEmailSentTo" class="info-message">
+          {{ t((s) => s.common.resetEmailSent, { email: resetEmailSentTo }) }}
         </p>
       </template>
     </section>
@@ -635,8 +659,20 @@ function onCardClick(entry: EloHistoryEntry): void {
   cursor: pointer;
 }
 
-.btn-forgot-password:hover {
+.btn-forgot-password:hover:not(:disabled) {
   color: var(--fg);
+}
+
+.btn-forgot-password:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.info-message {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.85rem;
+  line-height: 1.4;
 }
 
 .btn-link-lichess:disabled {

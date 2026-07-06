@@ -6,8 +6,9 @@ import { useSyncStore } from '@/stores/sync'
 
 export interface AuthActionResult {
   error: string | null
-  emailError?: string
+  emailAlreadyRegistered?: boolean
   emailConfirmationRequired?: boolean
+  invalidCredentials?: boolean
 }
 
 // Kept only in memory (never persisted, unlike PendingRegistration) since it holds the
@@ -54,6 +55,7 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingRegistration = ref<PendingRegistration | null>(loadPendingRegistration())
   const awaitingEmailConfirmation = ref<AwaitingEmailConfirmation | null>(null)
   const passwordRecoveryRequested = ref(false)
+  const passwordRecoveryLinkInvalid = ref(false)
   let initialized = false
 
   const isBackendConfigured = computed(() => supabase !== null)
@@ -94,7 +96,32 @@ export const useAuthStore = defineStore('auth', () => {
       }
     })
 
-    if (data.session) await useSyncStore().pullRemoteState()
+    await consumeRecoveryTokenFromUrl()
+
+    if (session.value) await useSyncStore().pullRemoteState()
+  }
+
+  // The password-reset email links straight back to the app with a token_hash
+  // (via a customized Supabase email template), instead of bouncing through the
+  // supabase.co verify endpoint — that hop showed a raw redirect page when the
+  // browser paused navigation to offer opening the installed PWA. The token is
+  // therefore verified here, on app load.
+  async function consumeRecoveryTokenFromUrl(): Promise<void> {
+    if (!supabase) return
+    const params = new URLSearchParams(window.location.search)
+    const tokenHash = params.get('token_hash')
+    if (!tokenHash || params.get('type') !== 'recovery') return
+
+    // Strip the one-time token from the URL before verifying, so a reload
+    // doesn't retry an already-consumed token (and it stays out of history).
+    params.delete('token_hash')
+    params.delete('type')
+    const query = params.toString()
+    history.replaceState(history.state, '', window.location.pathname + (query ? `?${query}` : ''))
+
+    const { error } = await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
+    passwordRecoveryLinkInvalid.value = error !== null
+    passwordRecoveryRequested.value = true
   }
 
   async function signUp(
@@ -115,11 +142,21 @@ export const useAuthStore = defineStore('auth', () => {
     })
 
     if (error) {
-      setPendingRegistration({ email, username, startElo })
+      // Not a retryable failure — the account exists, so the user should sign in
+      // or reset their password instead of retrying the signup.
       if (error.code === 'user_already_exists') {
-        return { error: null, emailError: 'An account with this email already exists.' }
+        return { error: null, emailAlreadyRegistered: true }
       }
+      setPendingRegistration({ email, username, startElo })
       return { error: friendlyAuthErrorMessage(error) }
+    }
+
+    // With email confirmations enabled, Supabase hides whether an email is taken
+    // (enumeration protection): signing up with a registered email "succeeds" with
+    // a fake user whose identities array is empty, and no email is sent. Detect
+    // that instead of falsely telling the user a confirmation email is on its way.
+    if (!data.session && data.user && data.user.identities?.length === 0) {
+      return { error: null, emailAlreadyRegistered: true }
     }
 
     setPendingRegistration(null)
@@ -144,7 +181,11 @@ export const useAuthStore = defineStore('auth', () => {
   async function signIn(email: string, password: string): Promise<AuthActionResult> {
     if (!supabase) return { error: 'Backend not configured' }
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error: error ? friendlyAuthErrorMessage(error) : null }
+    if (!error) return { error: null }
+    return {
+      error: friendlyAuthErrorMessage(error),
+      invalidCredentials: error.code === 'invalid_credentials',
+    }
   }
 
   // Retries signing in with the credentials captured at signup, once the user
@@ -189,8 +230,6 @@ export const useAuthStore = defineStore('auth', () => {
     resetLocalStateAndRedirect()
   }
 
-  // Hidden from the UI until SMTP is configured (ENABLE_EMAIL_AUTOCONFIRM=true for now
-  // means there's no email delivery to receive the reset link).
   async function requestPasswordReset(email: string): Promise<AuthActionResult> {
     if (!supabase) return { error: 'Backend not configured' }
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -208,6 +247,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function dismissPasswordRecovery(): void {
     passwordRecoveryRequested.value = false
+    passwordRecoveryLinkInvalid.value = false
   }
 
   return {
@@ -215,6 +255,7 @@ export const useAuthStore = defineStore('auth', () => {
     pendingRegistration,
     awaitingEmailConfirmation,
     passwordRecoveryRequested,
+    passwordRecoveryLinkInvalid,
     isBackendConfigured,
     isSignedIn,
     userEmail,

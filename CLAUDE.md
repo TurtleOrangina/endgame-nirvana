@@ -24,8 +24,16 @@ Puzzle data (`exercises.json`) is produced by a separate scraping project, not p
 ## Deployment
 
 - **Backend**: Supabase Cloud (Free tier) — not the self-hosted Docker stack described
-  in `backend/CLAUDE.md`, which is for local dev only.
-- **Frontend**: Cloudflare Pages/Workers (see `frontend/wrangler.jsonc`), deployed under
+  in `backend/CLAUDE.md`, which is for local dev only. Free-tier caveats to keep in mind
+  when designing features: **500 MB max database size** (be careful with per-user data
+  growth if usage picks up) and **5 GB egress/month** (another potential limiter at
+  scale — one reason the puzzle catalog ships as a static frontend asset instead of
+  being served from the backend).
+- **Email**: Resend (Free tier), wired up as Supabase's SMTP provider for confirmation
+  and password-reset emails. Main caveat: **100 emails/day** — fine at current usage,
+  but reachable with many signups or someone intentionally spamming reset requests.
+- **Frontend**: Cloudflare Pages (Free tier — no caveats in sight that would force an
+  upgrade; see `frontend/wrangler.jsonc`), deployed under
   the custom domain `endgame-nirvana.space`. The app uses hand-rolled client-side
   routing with real paths (e.g. `/profile`, `/training/<fen>`) rather than hash routing,
   so the Cloudflare `assets` config must keep

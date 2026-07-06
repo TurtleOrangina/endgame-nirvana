@@ -37,6 +37,9 @@ const password = ref('')
 const isSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const emailError = ref<string | null>(null)
+const emailAlreadyRegistered = ref(false)
+const resetEmailSentTo = ref<string | null>(null)
+const isSendingResetEmail = ref(false)
 const confirmationSentTo = ref<string | null>(null)
 const isLoggingIn = ref(false)
 const loginError = ref<string | null>(null)
@@ -78,6 +81,26 @@ function selectMode(next: SetupMode): void {
   step.value = 'basics'
   errorMessage.value = null
   emailError.value = null
+  emailAlreadyRegistered.value = false
+  resetEmailSentTo.value = null
+}
+
+async function sendPasswordResetEmail(): Promise<void> {
+  const trimmedEmail = email.value.trim()
+  if (!isValidEmail(trimmedEmail)) {
+    emailError.value = t((s) => s.common.enterValidEmail)
+    return
+  }
+  errorMessage.value = null
+  emailError.value = null
+  isSendingResetEmail.value = true
+  const result = await authStore.requestPasswordReset(trimmedEmail)
+  isSendingResetEmail.value = false
+  if (result.error) {
+    errorMessage.value = result.error
+    return
+  }
+  resetEmailSentTo.value = trimmedEmail
 }
 
 // Resamples the puzzle shown behind the modal so the user sees an appropriately-difficulty
@@ -141,6 +164,8 @@ function validateEmailPassword(): boolean {
 
 async function submitAccountStep(): Promise<void> {
   errorMessage.value = null
+  emailAlreadyRegistered.value = false
+  resetEmailSentTo.value = null
   if (!validateEmailPassword()) return
 
   if (!hasAccountDetails.value) {
@@ -157,8 +182,8 @@ async function submitAccountStep(): Promise<void> {
   )
   isSubmitting.value = false
 
-  if (result.emailError) {
-    emailError.value = result.emailError
+  if (result.emailAlreadyRegistered) {
+    emailAlreadyRegistered.value = true
     return
   }
   if (result.emailConfirmationRequired) {
@@ -218,6 +243,7 @@ function finishSetup(): void {
 async function submitSignIn(): Promise<void> {
   errorMessage.value = null
   emailError.value = null
+  resetEmailSentTo.value = null
   if (!isValidEmail(email.value.trim())) {
     emailError.value = t((s) => s.common.enterValidEmail)
     return
@@ -226,7 +252,9 @@ async function submitSignIn(): Promise<void> {
   const result = await authStore.signIn(email.value, password.value)
   isSubmitting.value = false
   if (result.error) {
-    errorMessage.value = result.error
+    errorMessage.value = result.invalidCredentials
+      ? t((s) => s.setup.errorInvalidCredentials)
+      : result.error
     return
   }
   emit('close')
@@ -290,6 +318,17 @@ async function submitSignIn(): Promise<void> {
           </label>
 
           <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+          <p v-if="resetEmailSentTo" class="info-message">
+            {{ t((s) => s.common.resetEmailSent, { email: resetEmailSentTo }) }}
+          </p>
+          <button
+            type="button"
+            class="btn-forgot-password"
+            :disabled="isSendingResetEmail"
+            @click="sendPasswordResetEmail"
+          >
+            {{ t((s) => s.common.forgotPassword) }}
+          </button>
         </div>
 
         <div class="step-actions">
@@ -418,6 +457,26 @@ async function submitSignIn(): Promise<void> {
             />
           </label>
           <p v-if="emailError" class="error-message">{{ emailError }}</p>
+
+          <template v-if="emailAlreadyRegistered">
+            <p class="error-message">{{ t((s) => s.setup.emailAlreadyRegistered) }}</p>
+            <p v-if="resetEmailSentTo" class="info-message">
+              {{ t((s) => s.common.resetEmailSent, { email: resetEmailSentTo }) }}
+            </p>
+            <div class="already-registered-actions">
+              <button type="button" class="btn-secondary" @click="selectMode('signin')">
+                {{ t((s) => s.setup.logInInstead) }}
+              </button>
+              <button
+                type="button"
+                class="btn-secondary"
+                :disabled="isSendingResetEmail"
+                @click="sendPasswordResetEmail"
+              >
+                {{ t((s) => s.setup.sendResetEmail) }}
+              </button>
+            </div>
+          </template>
 
           <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
         </div>
@@ -603,6 +662,60 @@ h2 {
   margin: 0;
   color: var(--btn-danger-fg);
   font-size: 0.85rem;
+}
+
+.info-message {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.btn-forgot-password {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.btn-forgot-password:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.btn-forgot-password:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.already-registered-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.btn-secondary {
+  padding: 0.45rem 0.9rem;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .confirmation-notice {
