@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useUserProfileStore } from '@/stores/userProfile'
-import { useSyncStore } from '@/stores/sync'
 import { applyTransformCode, pickRandomTransformCode } from '@/utils/fenTransform'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
 import type { Tables } from '@/types/database'
@@ -158,10 +157,10 @@ function buildExercises(puzzles: PuzzleRow[]): Exercise[] {
   })
 }
 
-// Puzzle Elo is server-authoritative once synced; puzzleEloOverrides holds the latest
-// server value per puzzle id, falling back to the elo from the cached puzzle catalog.
+// Puzzle Elo is learned server-side but only reaches clients through the bundled
+// exercises.json catalog, refreshed periodically via backend/scripts/export_puzzles.mjs.
 function eloOf(exercise: Exercise): number {
-  return useSyncStore().puzzleEloOverrides.get(exercise.id) ?? parseInt(exercise.difficulty)
+  return parseInt(exercise.difficulty)
 }
 
 function filterByCategory(exercises: Exercise[], prefix: string | null): Exercise[] {

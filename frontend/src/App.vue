@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import confetti from 'canvas-confetti'
-import { useExercisesStore } from '@/stores/exercises'
+import { useExercisesStore, type CategoryOption } from '@/stores/exercises'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useAuthStore } from '@/stores/auth'
 import { useSyncStore } from '@/stores/sync'
@@ -511,7 +511,7 @@ function toggleCategoryExpanded(value: string): void {
 // its own depth or shallower.
 const visibleCategoryOptions = computed(() => {
   const options = categoryOptions.value
-  const result: { label: string; value: string; depth: number; hasChildren: boolean }[] = []
+  const result: (CategoryOption & { hasChildren: boolean })[] = []
   let collapseFromDepth: number | null = null
   for (let i = 0; i < options.length; i++) {
     const opt = options[i]

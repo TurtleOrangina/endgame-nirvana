@@ -27,10 +27,11 @@ so a no-backend build keeps working exactly as before.
   `onMounted`), since it awaits the initial cloud pull if a session already exists.
 - `src/stores/sync.ts` — the write-behind outbox: batches `PendingAttempt[]` and a
   `profileDirty` flag into at most two requests (one `record_attempts` RPC, one `profiles`
-  update) per 30s debounce window, flushing also on reconnect, tab-hide, and login. Owns
-  `puzzleEloOverrides` (server-authoritative puzzle Elo, read by `exercises.ts`'s `eloOf()`).
+  update) per 30s debounce window, flushing also on reconnect, tab-hide, and login.
 - **User Elo is client-authoritative** (must keep working offline); **puzzle Elo is
-  server-authoritative**, only ever updated inside the `record_attempts` RPC.
+  server-authoritative**, only ever updated inside the `record_attempts` RPC — but the
+  client never reads it back: puzzle difficulty always comes from the bundled
+  `exercises.json`, which is what the periodic `export_puzzles.mjs` refresh is for.
 - **Merge policy on login**: cloud profile wins for Elo/settings; any attempts queued
   locally before login are replayed to the server afterward. No conflict prompt — this
   was a flagged-for-review default, not a hard requirement.
@@ -160,6 +161,7 @@ CI=true vp install              # install / sync dependencies
 CI=true vp install <pkg>        # add a new dependency (acts as vp add)
 CI=true vp install -D <pkg>     # add a dev dependency
 vp check --fix                  # format + lint + type-check, auto-fix where possible
+vp run type-check               # vue-tsc: also type-checks .vue templates (vp check does not!)
 ```
 
 ## Architecture
@@ -174,5 +176,5 @@ Lint rules are configured in `vite.config.ts` (oxlint + eslint + typescript + un
 - `prefer-const` and `no-var` are errors — use `const` by default, `let` only when reassignment is needed.
 - Keep components small and focused. Extract reusable logic into composables (`src/composables/`) or stores rather than repeating it.
 - Name components, composables, stores, and variables to make their purpose clear from the name alone.
-- After every code change, run `vp check --fix` to auto-fix formatting and lint errors, then confirm there are no remaining errors. All errors must be resolved before the work is done.
+- After every code change, run `vp check --fix` to auto-fix formatting and lint errors, then run `vp run type-check` — `vp check`'s type checker (tsgolint) does not type-check expressions inside `.vue` templates, but the production build (`vue-tsc --build`) does, so skipping this step lets template type errors slip through to a failed deployment. All errors from both commands must be resolved before the work is done.
 - Do not start the dev server (`vp dev`) to test changes — the user runs and tests the app themselves.

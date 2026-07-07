@@ -9,8 +9,11 @@ import type { Json, Tables } from '@/types/database'
 
 const OUTBOX_STORAGE_KEY = 'syncOutbox'
 const PROFILE_DIRTY_STORAGE_KEY = 'syncProfileDirty'
-const PUZZLE_ELO_OVERRIDES_STORAGE_KEY = 'puzzleEloOverrides'
 const FLUSH_DEBOUNCE_MS = 30_000
+
+// Puzzle difficulty now comes solely from the bundled exercises.json; drop the
+// server-Elo override map older app versions persisted.
+localStorage.removeItem('puzzleEloOverrides')
 
 // Mirrors record_attempts' expected jsonb shape (backend/supabase/migrations).
 export interface PendingAttempt {
@@ -27,7 +30,6 @@ export interface PendingAttempt {
 interface PullStateResult {
   profile: Tables<'profiles'> | null
   attempts: Tables<'attempts'>[]
-  puzzles: { id: string; elo: number }[]
 }
 
 function loadOutbox(): PendingAttempt[] {
@@ -51,40 +53,9 @@ function persistProfileDirty(dirty: boolean): void {
   localStorage.setItem(PROFILE_DIRTY_STORAGE_KEY, String(dirty))
 }
 
-function loadPuzzleEloOverrides(): Map<string, number> {
-  try {
-    const raw = localStorage.getItem(PUZZLE_ELO_OVERRIDES_STORAGE_KEY)
-    if (!raw) return new Map()
-    return new Map(Object.entries(JSON.parse(raw) as Record<string, number>))
-  } catch {
-    return new Map()
-  }
-}
-
-function persistPuzzleEloOverrides(overrides: Map<string, number>): void {
-  localStorage.setItem(
-    PUZZLE_ELO_OVERRIDES_STORAGE_KEY,
-    JSON.stringify(Object.fromEntries(overrides)),
-  )
-}
-
-function isTouchedPuzzleList(value: unknown): value is { id: string; elo: number }[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (entry): entry is { id: string; elo: number } =>
-        typeof entry === 'object' &&
-        entry !== null &&
-        typeof (entry as { id?: unknown }).id === 'string' &&
-        typeof (entry as { elo?: unknown }).elo === 'number',
-    )
-  )
-}
-
 export const useSyncStore = defineStore('sync', () => {
   const outbox = ref<PendingAttempt[]>(loadOutbox())
   const profileDirty = ref(loadProfileDirty())
-  const puzzleEloOverrides = ref<Map<string, number>>(loadPuzzleEloOverrides())
   const isSyncing = ref(false)
   const lastSyncError = ref<string | null>(null)
   const pendingCount = computed(() => outbox.value.length + (profileDirty.value ? 1 : 0))
@@ -99,12 +70,6 @@ export const useSyncStore = defineStore('sync', () => {
     profileDirty.value = true
     persistProfileDirty(true)
     debouncedFlush()
-  }
-
-  function applyTouchedPuzzles(data: unknown): void {
-    if (!isTouchedPuzzleList(data)) return
-    for (const { id, elo } of data) puzzleEloOverrides.value.set(id, elo)
-    persistPuzzleEloOverrides(puzzleEloOverrides.value)
   }
 
   let inFlightFlush: Promise<void> | null = null
@@ -138,13 +103,12 @@ export const useSyncStore = defineStore('sync', () => {
       if (!session) return
 
       if (outbox.value.length > 0) {
-        const { data, error } = await supabase.rpc('record_attempts', {
+        const { error } = await supabase.rpc('record_attempts', {
           p_attempts: outbox.value as unknown as Json,
         })
         if (error) throw error
         outbox.value = []
         persistOutbox([])
-        applyTouchedPuzzles(data)
       }
 
       if (profileDirty.value) {
@@ -219,9 +183,6 @@ export const useSyncStore = defineStore('sync', () => {
         useLichessAuth().applyPendingUsernameToProfile()
       }
 
-      puzzleEloOverrides.value = new Map(state.puzzles.map((puzzle) => [puzzle.id, puzzle.elo]))
-      persistPuzzleEloOverrides(puzzleEloOverrides.value)
-
       lastSyncError.value = null
     } catch (error) {
       lastSyncError.value = error instanceof Error ? error.message : 'Sync failed'
@@ -242,7 +203,6 @@ export const useSyncStore = defineStore('sync', () => {
 
   return {
     profileDirty,
-    puzzleEloOverrides,
     isSyncing,
     lastSyncError,
     pendingCount,

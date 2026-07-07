@@ -115,7 +115,7 @@ export type Database = {
       delete_own_account: { Args: never; Returns: undefined }
       export_puzzles: { Args: never; Returns: Json }
       pull_state: { Args: never; Returns: Json }
-      record_attempts: { Args: { p_attempts: Json }; Returns: Json }
+      record_attempts: { Args: { p_attempts: Json }; Returns: undefined }
       seed_puzzles: { Args: { p_puzzles: Json }; Returns: number }
     }
     Enums: {
