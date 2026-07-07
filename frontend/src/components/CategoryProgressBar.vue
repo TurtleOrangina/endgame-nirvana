@@ -1,10 +1,14 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   solved: number
   failed: number
   unattempted: number
   total: number
 }>()
+
+const attempted = computed((): number => props.solved + props.failed)
 </script>
 
 <template>
@@ -17,8 +21,9 @@ defineProps<{
       :style="{ flexGrow: unattempted }"
     />
   </div>
-  <span class="node-progress-solved">{{ solved }}</span>
-  <span class="node-progress-total">/{{ total }}</span>
+  <span class="node-progress-attempted">{{ attempted }}</span>
+  <span class="node-progress-slash">/</span>
+  <span class="node-progress-total">{{ total }}</span>
 </template>
 
 <style scoped>
@@ -49,7 +54,8 @@ defineProps<{
   background: var(--track-bg);
 }
 
-.node-progress-solved,
+.node-progress-attempted,
+.node-progress-slash,
 .node-progress-total {
   font-size: 0.8rem;
   font-weight: 600;
@@ -57,8 +63,13 @@ defineProps<{
   font-variant-numeric: tabular-nums;
 }
 
-.node-progress-solved {
+.node-progress-attempted {
   text-align: right;
+}
+
+/* The slash sits in its own grid column, so the grid gap spaces it evenly on both sides. */
+.node-progress-slash {
+  margin: 0 -0.2rem;
 }
 
 .node-progress-total {

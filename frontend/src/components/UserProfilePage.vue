@@ -22,7 +22,8 @@ const emit = defineEmits<{
 const userProfileStore = useUserProfileStore()
 const { profile } = storeToRefs(userProfileStore)
 const exercisesStore = useExercisesStore()
-const { categoryProgressTree, difficultyPuzzleCounts } = storeToRefs(exercisesStore)
+const { categoryProgressTree, difficultyPuzzleCounts, overallProgress } =
+  storeToRefs(exercisesStore)
 const authStore = useAuthStore()
 const syncStore = useSyncStore()
 const lichessAuth = useLichessAuth()
@@ -312,11 +313,16 @@ function onCardClick(entry: EloHistoryEntry): void {
     </section>
 
     <section class="section">
-      <h2 class="section-title">{{ t((s) => s.profile.solveProgress) }}</h2>
+      <div class="section-header">
+        <h2 class="section-title">{{ t((s) => s.profile.solveProgress) }}</h2>
+        <span v-if="profile" class="current-elo">
+          {{ t((s) => s.profile.currentElo, { elo: profile.endgameElo }) }}
+        </span>
+      </div>
       <p v-if="categoryProgressTree.length === 0" class="empty">
-        {{ t((s) => s.profile.noExercisesSolved) }}
+        {{ t((s) => s.profile.noExercisesAttempted) }}
       </p>
-      <CategoryProgressTree v-else :nodes="categoryProgressTree" />
+      <CategoryProgressTree v-else :nodes="categoryProgressTree" :overall="overallProgress" />
     </section>
 
     <section class="section">
@@ -510,6 +516,22 @@ function onCardClick(entry: EloHistoryEntry): void {
   font-size: 1rem;
   font-weight: 700;
   color: var(--fg);
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.current-elo {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  margin-top: 1rem;
+  margin-left: 0.5rem;
 }
 
 .section-desc {

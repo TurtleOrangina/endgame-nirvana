@@ -40,14 +40,28 @@ export interface Exercise {
 
 // A node in the category selection dropdown, flattened with `depth` for indentation.
 // `value` is the full category path (e.g. "Pawn Endgames/Square of the Pawn") used for filtering.
+// attempted/total aggregate over the node's entire subtree, shown as completion in the dropdown,
+// counting the same pool as the profile's solve progress (see countsTowardProgress).
 export interface CategoryOption {
   label: string
   value: string
   depth: number
+  attempted: number
+  total: number
+}
+
+// `hidden` counts puzzles excluded by the difficulty filter; they are not part of `total`.
+export interface SolveProgress {
+  solved: number
+  failed: number
+  unattempted: number
+  total: number
+  hidden: number
 }
 
 // A node in the profile's solve-progress tree. Counts aggregate over the node's entire
-// subtree, so a parent's counts reflect all of its descendants. solved + failed + unattempted === total.
+// subtree, so a parent's counts reflect all of its descendants. solved + failed + unattempted === total;
+// `hidden` counts puzzles excluded by the difficulty filter and is not part of `total`.
 export interface CategoryProgressNode {
   label: string
   value: string
@@ -56,6 +70,7 @@ export interface CategoryProgressNode {
   failed: number
   unattempted: number
   total: number
+  hidden: number
   children: CategoryProgressNode[]
 }
 
@@ -312,28 +327,62 @@ export const useExercisesStore = defineStore('exercises', () => {
     }
   })
 
+  const difficultyEligibleIds = computed(
+    (): Set<string> => new Set(difficultyEligibleExercises.value.map((ex) => ex.id)),
+  )
+
+  // Exercise ids that have at least one failed attempt, ever (all-time, not just the
+  // recent-exclusion window). An id here that's since been solved no longer counts as "failed".
+  const everFailedIds = computed((): Set<string> => {
+    const history = useUserProfileStore().profile?.eloHistory ?? []
+    const ids = new Set<string>()
+    for (const entry of history) {
+      if (entry.exerciseId && entry.solved === false) ids.add(entry.exerciseId)
+    }
+    return ids
+  })
+
+  function solveStatusOf(exerciseId: string): 'solved' | 'failed' | null {
+    if (solvedExercises.value.has(exerciseId)) return 'solved'
+    if (everFailedIds.value.has(exerciseId)) return 'failed'
+    return null
+  }
+
+  // Progress totals cover every difficulty-eligible puzzle plus already-attempted puzzles
+  // that have since left the eligible pool (e.g. because the user's elo moved) — an attempt
+  // stays visible in the progress counts even once its puzzle is filtered out.
+  function countsTowardProgress(exerciseId: string): boolean {
+    return difficultyEligibleIds.value.has(exerciseId) || solveStatusOf(exerciseId) !== null
+  }
+
   // Builds the category tree from exercise paths, then flattens it depth-first for the
   // dropdown. Top-level categories are sorted alphabetically (matching prior behaviour);
-  // deeper levels preserve the curriculum order from exercises.json. Categories with no
-  // exercises left after the difficulty filter are omitted.
+  // deeper levels preserve the curriculum order from exercises.json. Categories without
+  // a single puzzle counting toward progress are omitted.
   const categoryOptions = computed((): CategoryOption[] => {
     interface TreeNode {
       label: string
       value: string
+      attempted: number
+      total: number
       children: Map<string, TreeNode>
     }
 
     const roots = new Map<string, TreeNode>()
-    for (const ex of difficultyEligibleExercises.value) {
+    for (const ex of allExercises.value) {
+      if (!countsTowardProgress(ex.id)) continue
       let siblings = roots
       let prefix = ''
+      const attempted = solveStatusOf(ex.id) !== null
       for (const segment of ex.categoryPath) {
         prefix = prefix ? `${prefix}/${segment}` : segment
         let node = siblings.get(segment)
         if (!node) {
-          node = { label: segment, value: prefix, children: new Map() }
+          node = { label: segment, value: prefix, attempted: 0, total: 0, children: new Map() }
           siblings.set(segment, node)
         }
+        node.total++
+        if (attempted) node.attempted++
         siblings = node.children
       }
     }
@@ -344,7 +393,13 @@ export const useExercisesStore = defineStore('exercises', () => {
           ? [...nodes.values()].sort((a, b) => a.label.localeCompare(b.label))
           : [...nodes.values()]
       return ordered.flatMap((node) => [
-        { label: node.label, value: node.value, depth },
+        {
+          label: node.label,
+          value: node.value,
+          depth,
+          attempted: node.attempted,
+          total: node.total,
+        },
         ...flatten(node.children, depth + 1),
       ])
     }
@@ -368,7 +423,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   // they're too hard or too easy relative to the user's current elo.
   const categoryHiddenCounts = computed((): { tooHard: number; tooEasy: number } => {
     const userElo = useUserProfileStore().profile?.endgameElo ?? 1400
-    const eligibleIds = new Set(difficultyEligibleExercises.value.map((ex) => ex.id))
+    const eligibleIds = difficultyEligibleIds.value
 
     let tooHard = 0
     let tooEasy = 0
@@ -386,7 +441,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   const difficultyPuzzleCounts = computed(
     (): { active: number; tooHard: number; tooEasy: number } => {
       const userElo = useUserProfileStore().profile?.endgameElo ?? 1400
-      const eligibleIds = new Set(difficultyEligibleExercises.value.map((ex) => ex.id))
+      const eligibleIds = difficultyEligibleIds.value
 
       let tooHard = 0
       let tooEasy = 0
@@ -429,28 +484,22 @@ export const useExercisesStore = defineStore('exercises', () => {
     return allExercises.value.find((ex) => ex.id === currentExerciseId.value) ?? null
   })
 
-  // Exercise ids that have at least one failed attempt, ever (all-time, not just the
-  // recent-exclusion window). An id here that's since been solved no longer counts as "failed".
-  const everFailedIds = computed((): Set<string> => {
-    const history = useUserProfileStore().profile?.eloHistory ?? []
-    const ids = new Set<string>()
-    for (const entry of history) {
-      if (entry.exerciseId && entry.solved === false) ids.add(entry.exerciseId)
-    }
-    return ids
-  })
+  // The selected category's progress pool — see countsTowardProgress for why this is not
+  // simply categoryExercises.
+  const countedCategoryExercises = computed((): Exercise[] =>
+    categoryExercisesAllDifficulties.value.filter((ex) => countsTowardProgress(ex.id)),
+  )
 
-  const categoryPuzzleTotal = computed((): number => categoryExercises.value.length)
+  const categoryPuzzleTotal = computed((): number => countedCategoryExercises.value.length)
 
   const categoryPuzzleSolved = computed(
-    (): number => categoryExercises.value.filter((ex) => solvedExercises.value.has(ex.id)).length,
+    (): number =>
+      countedCategoryExercises.value.filter((ex) => solveStatusOf(ex.id) === 'solved').length,
   )
 
   const categoryPuzzleFailed = computed(
     (): number =>
-      categoryExercises.value.filter(
-        (ex) => !solvedExercises.value.has(ex.id) && everFailedIds.value.has(ex.id),
-      ).length,
+      countedCategoryExercises.value.filter((ex) => solveStatusOf(ex.id) === 'failed').length,
   )
 
   const categoryPuzzleUnattempted = computed(
@@ -459,7 +508,8 @@ export const useExercisesStore = defineStore('exercises', () => {
   )
 
   // Builds the full category tree with per-node solve counts (aggregated over descendants),
-  // pruning any node with zero solved puzzles. Mirrors the categoryOptions tree-building logic.
+  // pruning any node without a single attempted puzzle. Mirrors the categoryOptions
+  // tree-building logic.
   const categoryProgressTree = computed((): CategoryProgressNode[] => {
     interface TreeNode {
       label: string
@@ -467,15 +517,16 @@ export const useExercisesStore = defineStore('exercises', () => {
       total: number
       solved: number
       failed: number
+      hidden: number
       children: Map<string, TreeNode>
     }
 
     const roots = new Map<string, TreeNode>()
-    for (const ex of difficultyEligibleExercises.value) {
+    for (const ex of allExercises.value) {
       let siblings = roots
       let prefix = ''
-      const solved = solvedExercises.value.has(ex.id)
-      const failed = !solved && everFailedIds.value.has(ex.id)
+      const counted = countsTowardProgress(ex.id)
+      const status = solveStatusOf(ex.id)
       for (const segment of ex.categoryPath) {
         prefix = prefix ? `${prefix}/${segment}` : segment
         let node = siblings.get(segment)
@@ -486,13 +537,18 @@ export const useExercisesStore = defineStore('exercises', () => {
             total: 0,
             solved: 0,
             failed: 0,
+            hidden: 0,
             children: new Map(),
           }
           siblings.set(segment, node)
         }
-        node.total++
-        if (solved) node.solved++
-        else if (failed) node.failed++
+        if (counted) {
+          node.total++
+          if (status === 'solved') node.solved++
+          else if (status === 'failed') node.failed++
+        } else {
+          node.hidden++
+        }
         siblings = node.children
       }
     }
@@ -503,7 +559,7 @@ export const useExercisesStore = defineStore('exercises', () => {
           ? [...nodes.values()].sort((a, b) => a.label.localeCompare(b.label))
           : [...nodes.values()]
       return ordered
-        .filter((node) => node.solved > 0)
+        .filter((node) => node.solved > 0 || node.failed > 0)
         .map((node) => ({
           label: node.label,
           value: node.value,
@@ -512,11 +568,32 @@ export const useExercisesStore = defineStore('exercises', () => {
           failed: node.failed,
           unattempted: node.total - node.solved - node.failed,
           total: node.total,
+          hidden: node.hidden,
           children: build(node.children, depth + 1),
         }))
     }
 
     return build(roots, 0)
+  })
+
+  // Solve progress over the whole pool (see countsTowardProgress), regardless of the
+  // selected category.
+  const overallProgress = computed((): SolveProgress => {
+    let solved = 0
+    let failed = 0
+    let total = 0
+    let hidden = 0
+    for (const ex of allExercises.value) {
+      if (!countsTowardProgress(ex.id)) {
+        hidden++
+        continue
+      }
+      total++
+      const status = solveStatusOf(ex.id)
+      if (status === 'solved') solved++
+      else if (status === 'failed') failed++
+    }
+    return { solved, failed, unattempted: total - solved - failed, total, hidden }
   })
 
   function selectRandom(eloOverride?: number): void {
@@ -669,6 +746,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     categoryHiddenCounts,
     difficultyPuzzleCounts,
     categoryProgressTree,
+    overallProgress,
     selectedCategory,
     initialPieceCount,
     load,

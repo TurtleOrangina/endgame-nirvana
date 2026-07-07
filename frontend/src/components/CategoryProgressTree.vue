@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { CategoryProgressNode } from '@/stores/exercises'
+import type { CategoryProgressNode, SolveProgress } from '@/stores/exercises'
 import CategoryProgressBar from '@/components/CategoryProgressBar.vue'
+import CategoryProgressTooltip from '@/components/CategoryProgressTooltip.vue'
+import { useLocale } from '@/composables/useLocale'
 
 const props = defineProps<{
   nodes: CategoryProgressNode[]
+  overall?: SolveProgress
 }>()
+
+const { t } = useLocale()
 
 // Only depth-0 nodes are open by default; toggling a node flips it relative to that default,
 // so this set holds "nodes whose open state differs from the default" rather than "open nodes".
@@ -43,6 +48,23 @@ const visibleRows = computed((): CategoryProgressNode[] => {
 
 <template>
   <div class="category-tree">
+    <div v-if="overall" class="category-tree-row overall-row">
+      <span class="node-label">{{ t((s) => s.profile.totalProgress) }}</span>
+      <CategoryProgressBar
+        :solved="overall.solved"
+        :failed="overall.failed"
+        :unattempted="overall.unattempted"
+        :total="overall.total"
+      />
+      <CategoryProgressTooltip
+        :label="t((s) => s.profile.totalProgress)"
+        :solved="overall.solved"
+        :failed="overall.failed"
+        :unattempted="overall.unattempted"
+        :total="overall.total"
+        :hidden="overall.hidden"
+      />
+    </div>
     <div
       v-for="node in visibleRows"
       :key="node.value"
@@ -58,6 +80,14 @@ const visibleRows = computed((): CategoryProgressNode[] => {
         :unattempted="node.unattempted"
         :total="node.total"
       />
+      <CategoryProgressTooltip
+        :label="node.label"
+        :solved="node.solved"
+        :failed="node.failed"
+        :unattempted="node.unattempted"
+        :total="node.total"
+        :hidden="node.hidden"
+      />
     </div>
   </div>
 </template>
@@ -65,7 +95,7 @@ const visibleRows = computed((): CategoryProgressNode[] => {
 <style scoped>
 .category-tree {
   display: grid;
-  grid-template-columns: minmax(0, auto) minmax(80px, 1fr) auto auto;
+  grid-template-columns: minmax(0, auto) minmax(80px, 1fr) auto auto auto;
   column-gap: 0.6rem;
   row-gap: 0.15rem;
 }
@@ -78,6 +108,12 @@ const visibleRows = computed((): CategoryProgressNode[] => {
   padding: 0.35rem 0.5rem;
   border-radius: 5px;
   font-size: 0.875rem;
+  position: relative;
+}
+
+.category-tree-row:hover > .progress-tooltip {
+  opacity: 1;
+  visibility: visible;
 }
 
 .category-tree-row.clickable {
@@ -90,6 +126,15 @@ const visibleRows = computed((): CategoryProgressNode[] => {
 
 .category-tree-row:not(.clickable) {
   color: var(--muted);
+}
+
+.category-tree-row.overall-row {
+  color: var(--fg);
+  font-weight: 600;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
 }
 
 .node-label {

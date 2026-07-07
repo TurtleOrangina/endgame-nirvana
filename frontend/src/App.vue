@@ -17,6 +17,7 @@ import ChessBoard from '@/components/ChessBoard.vue'
 import SetupModal from '@/components/SetupModal.vue'
 import AnalysisPanel from '@/components/AnalysisPanel.vue'
 import BoardNavControls from '@/components/BoardNavControls.vue'
+import CategorySolveCount from '@/components/CategorySolveCount.vue'
 import UserProfilePage from '@/components/UserProfilePage.vue'
 import PasswordRecoveryModal from '@/components/PasswordRecoveryModal.vue'
 import {
@@ -45,9 +46,14 @@ const {
   categoryPuzzleFailed,
   categoryPuzzleUnattempted,
   categoryHiddenCounts,
+  overallProgress,
   selectedCategory,
   requestedPuzzleNotFound,
 } = storeToRefs(store)
+
+// Fixed width for the solved/total columns in the category dropdown, sized to the widest
+// possible number (the overall total) so the counts line up across all options.
+const categoryCountColumnWidth = computed(() => `${String(overallProgress.value.total).length}ch`)
 
 // The FEN the board actually renders — transformed for variety.
 const currentBoardFen = computed(
@@ -879,13 +885,20 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
                   </summary>
-                  <div class="dropdown-panel">
+                  <div
+                    class="dropdown-panel"
+                    :style="{ '--count-column-width': categoryCountColumnWidth }"
+                  >
                     <div
                       class="option"
                       :class="{ selected: selectedCategory === null }"
                       @click="selectCategory(null)"
                     >
-                      {{ t((s) => s.app.allCategories) }}
+                      <span class="option-label">{{ t((s) => s.app.allCategories) }}</span>
+                      <CategorySolveCount
+                        :attempted="overallProgress.solved + overallProgress.failed"
+                        :total="overallProgress.total"
+                      />
                     </div>
                     <div
                       v-for="opt in visibleCategoryOptions"
@@ -919,7 +932,8 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                         </svg>
                       </button>
                       <span v-else-if="opt.depth > 0" class="option-marker">∟</span>
-                      {{ opt.label }}
+                      <span class="option-label">{{ opt.label }}</span>
+                      <CategorySolveCount :attempted="opt.attempted" :total="opt.total" />
                     </div>
                   </div>
                 </details>
@@ -1312,6 +1326,14 @@ body {
 .option-marker {
   color: var(--muted);
   margin-right: 0.3rem;
+}
+
+.option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .option-expand {
