@@ -685,7 +685,7 @@ function setupBoard(fen: string): void {
     drawable: {
       enabled: true,
       visible: true,
-      eraseOnMovablePieceClick: false,
+      eraseOnMovablePieceClick: true,
       onChange: onDrawableChange,
       brushes: {
         blue: { ...USER_SHAPE_BRUSHES.blue, opacity: 1, lineWidth: 10 },
