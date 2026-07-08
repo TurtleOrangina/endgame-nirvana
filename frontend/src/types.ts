@@ -74,18 +74,19 @@ export interface UserProfile {
   lichessUsername: string | null
 }
 
-export interface EngineEvaluation {
-  bestMove: string | null
-  scoreCP: number | null
-  scoreMate: number | null
-}
-
 export interface EngineLine {
   moves: string[]
   scoreCP: number | null
   scoreMate: number | null
   depth: number
   multipvIndex: number
+}
+
+export interface EngineLineWithDTD extends EngineLine {
+  // Distance to done: half-moves from the current position until the human player would
+  // consider the position solved (checkmate, or earlier simplification into a trivially
+  // won/drawn position). null when unknown.
+  dtd: number | null
 }
 
 export interface AnalysisSettings {

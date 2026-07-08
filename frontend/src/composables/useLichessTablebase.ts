@@ -1,8 +1,6 @@
-import type { TablebaseCategory, TablebaseMove, TablebaseResult } from '@/types'
+import type { GameResult, TablebaseCategory, TablebaseMove, TablebaseResult } from '@/types'
 
 const TABLEBASE_URL = 'https://tablebase.lichess.ovh/standard'
-
-const EPSILON = 1e-6
 
 const PIECE_VALUE: Record<string, number> = { q: 9, r: 5, b: 3, n: 3 }
 
@@ -30,6 +28,27 @@ function parseCategory(cat: string | undefined): TablebaseCategory {
 export function flipCategory(cat: TablebaseCategory): TablebaseCategory {
   if (cat === 'unknown') return 'unknown'
   return RANK_TO_CATEGORY[-CATEGORY_RANK[cat]]!
+}
+
+// Collapses a tablebase category (in the mover's perspective — flip a raw move category
+// first, since those describe the resulting position from the opponent's side) into the
+// game outcome the mover can force. Cursed wins / blessed losses count as draws because
+// the 50-move rule rescues the defender.
+export function categoryToOutcome(cat: TablebaseCategory): GameResult | null {
+  switch (cat) {
+    case 'win':
+    case 'syzygy-win':
+    case 'maybe-win':
+      return 'win'
+    case 'cursed-win':
+    case 'draw':
+    case 'blessed-loss':
+      return 'draw'
+    case 'unknown':
+      return null
+    default:
+      return 'loss'
+  }
 }
 
 /**
@@ -102,30 +121,12 @@ function compareMoves(a: TablebaseMove, b: TablebaseMove, isDtzValuable: boolean
   return (b.dtc ?? -Infinity) - (a.dtc ?? -Infinity)
 }
 
-function weightedSample(
-  candidates: TablebaseMove[],
-  weights: number[],
-  temperature: number,
-): TablebaseMove {
-  const total = weights.reduce((s, w) => s + w, 0)
-  const normalized_weights = weights.map((w) => w / total)
-  const exponent = 1 / Math.max(0.01, temperature) // Lower cap temperature to avoid division by zero
-  const scaled_weights = normalized_weights.map((w) => w ** exponent)
-  const scaled_total = scaled_weights.reduce((s, w) => s + w, 0)
-  console.log(
-    'Picking defensive move from:',
-    candidates
-      .map((m, i) => `${m.san} ${((scaled_weights[i]! / scaled_total) * 100).toFixed(1)}%`)
-      .join(', '),
-    `temperature = ${temperature.toFixed(2)}`,
-  )
-
-  let r = Math.random() * scaled_total
-  for (let i = 0; i < candidates.length; i++) {
-    r -= scaled_weights[i]!
-    if (r <= 0) return candidates[i]!
-  }
-  throw new Error('Unreachable')
+export interface OutcomeRetainingResult {
+  result: TablebaseResult
+  // Best outcome the side to move can force, in that side's own perspective
+  bestOutcome: GameResult
+  // Moves that keep that outcome, preserving the sorted order of result.moves
+  outcomeRetainingMoves: TablebaseMove[]
 }
 
 export function useLichessTablebase() {
@@ -185,61 +186,22 @@ export function useLichessTablebase() {
     }
   }
 
-  function selectBestMove(
-    result: TablebaseResult,
-    temperature: number,
-    fen: string,
-  ): string | null {
-    // Any unknown-category move means tablebase data is incomplete — defer to engine
+  // Like query(), but additionally reduced to what matters for move selection: the best
+  // outcome the mover can force and the moves that retain it. Returns null when the
+  // position isn't completely solved by the tablebase (query failure or any
+  // unknown-category move), so callers can defer to the engine instead.
+  async function queryOutcomeRetaining(fen: string): Promise<OutcomeRetainingResult | null> {
+    const result = await query(fen)
+    if (!result) return null
     if (result.moves.some((m) => m.category === 'unknown')) return null
-    // Engine plays out draws
-    if (result.category === 'draw') {
-      return null
-    }
-    if (CATEGORY_RANK[result.category] < CATEGORY_RANK['draw']) {
-      // Computer winning, just pick best
-      console.log('Using tablebase to pick the strongest win for the computer')
-      return result.moves[0]?.uci ?? null
-    }
-    // Computer is losing, use temperature controlled weighted random sampling
-    // to provide a strong defensive challenge that tests all difficult paths
-    // Moves that are harder for the attacker to convert (higher DTM/DTZ/DTC)
-    // get more weight; temperature controls how tightly the distribution peaks.
-    //
-    // When DTZ is as valuable as DTM (see isDtzAsValuableAsDtm): weight = max(ε, min over
-    // non-null metrics of max(0, metric − 3)) ** 1/temperature
-    //
-    // Otherwise, a zeroing capture isn't necessarily as good as delaying mate, so DTM must
-    // dominate: weight = max(ε, max(0, dtm + (dtz + dtc)/100 − 3)) ** 1/temperature, requires
-    // every candidate to have a DTM — without it we can't rank moves this way, so defer to
-    // the engine instead.
 
-    // Keep only moves that maintain the position's best achievable outcome
-    const candidates = result.moves.filter((m) => m.category === result.category)
-    if (candidates.length === 0) return null
-
-    const isDtzValuable = isDtzAsValuableAsDtm(fen)
-    if (!isDtzValuable) {
-      // In situations where zeroing is not as valuable, decrease the temperature for tighter play
-      temperature /= 3
-    }
-    const allCandidatesHaveDtm = candidates.every((m) => m.dtm !== null)
-    if (!isDtzValuable && !allCandidatesHaveDtm) return null
-
-    const weights = candidates.map((m) => {
-      if (!isDtzValuable) {
-        const weight = Math.max(0, m.dtm! + ((m.dtz ?? 0) + (m.dtc ?? 0)) / 100 - 3)
-        return Math.max(EPSILON, weight)
-      }
-      const slacks = ([m.dtm, m.dtz, m.dtc] as (number | null)[])
-        .filter((v): v is number => v !== null)
-        .map((v) => Math.max(0, v - 3))
-      const slack = slacks.length > 0 ? Math.min(...slacks) : 0
-      return Math.max(EPSILON, slack)
-    })
-
-    return weightedSample(candidates, weights, temperature).uci ?? null
+    const bestOutcome = categoryToOutcome(flipCategory(result.category))
+    if (bestOutcome === null) return null
+    const outcomeRetainingMoves = result.moves.filter(
+      (m) => categoryToOutcome(flipCategory(m.category)) === bestOutcome,
+    )
+    return { result, bestOutcome, outcomeRetainingMoves }
   }
 
-  return { query, selectBestMove }
+  return { query, queryOutcomeRetaining }
 }

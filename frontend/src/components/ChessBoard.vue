@@ -5,18 +5,22 @@ import type { Api } from '@lichess-org/chessground/api'
 import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { BrushColor, Key, MoveMetadata } from '@lichess-org/chessground/types'
 import { Chess, type Move, type Square } from 'chess.js'
-import { useStockfishEngine } from '@/composables/useStockfishEngine'
+import {
+  FAILURE_RECHECK_THINKING_TIME_MS,
+  useStockfishEngine,
+} from '@/composables/useStockfishEngine'
 import { useBoardAudio, type BoardSound } from '@/composables/useBoardAudio'
 import { useLichessTablebase } from '@/composables/useLichessTablebase'
 import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
+import { useMoveSelector, type MoveSelectionResult } from '@/composables/useMoveSelector'
 import { isOutsidePuzzleGoal } from '@/utils/puzzleEvaluation'
+import { isBareKingVsMajorPiece, MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON } from '@/utils/chess'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useExercisesStore } from '@/stores/exercises'
 import type {
   GameResult,
   PlayerColor,
-  EngineEvaluation,
   EngineLine,
   TablebaseCategory,
   TablebaseResult,
@@ -52,10 +56,6 @@ const PROMOTION_OPTIONS: {
 
 const TEMPERATURE_RATED = 0.35 // in rated trys the engine defends more accurately
 const TEMPERATURE_RETRY = 0.6 // on retrys more variance is accepted, to see more variations
-
-// A premove signals the player is in a hurry and not weighing this position carefully, so
-// the engine's reply to the one move following it thinks for much less time than usual.
-const PREMOVE_ENGINE_THINKING_TIME_MS = 50
 
 // User-drawn arrows/marked squares are coloured by the modifier key held when the
 // right-click drag starts: none = blue, Alt = red, Ctrl = green, Shift = yellow.
@@ -102,6 +102,7 @@ const boardAudio = useBoardAudio()
 const { t } = useLocale()
 const tablebase = useLichessTablebase()
 const lichessAuth = useLichessAuth()
+const moveSelector = useMoveSelector()
 
 const historyEntries = ref<HistoryEntry[]>([])
 const historyIndex = ref(0)
@@ -324,28 +325,6 @@ function countPieces(fen: string): number {
   return (fen.split(' ')[0] ?? '').split('').filter((c) => /[a-zA-Z]/.test(c)).length
 }
 
-function piecesByColor(fen: string): { white: string[]; black: string[] } {
-  const board = (fen.split(' ')[0] ?? '').replace(/[0-9/]/g, '')
-  const white: string[] = []
-  const black: string[] = []
-  for (const piece of board) {
-    if (piece === piece.toUpperCase()) white.push(piece.toLowerCase())
-    else black.push(piece)
-  }
-  return { white, black }
-}
-
-// True when the opponent is down to a bare king and we hold at least one queen or
-// rook (any other material on either side, e.g. extra pawns/minors, doesn't matter).
-function isBareKingVsMajorPiece(fen: string): boolean {
-  const { white, black } = piecesByColor(fen)
-  const playerPieces = playerColor === 'white' ? white : black
-  const opponentPieces = playerColor === 'white' ? black : white
-  const opponentIsBareKing = opponentPieces.length === 1 && opponentPieces[0] === 'k'
-  const playerHasMajorPiece = playerPieces.includes('q') || playerPieces.includes('r')
-  return opponentIsBareKing && playerHasMajorPiece
-}
-
 // Auto-solves as a win once the position has been reduced to a trivial mating
 // material advantage (bare king vs. at least one queen or rook), but only if the
 // player is genuinely winning right now and this material edge wasn't already
@@ -358,11 +337,11 @@ function shouldAutoSolve(
   tablebaseCategory: TablebaseCategory | null,
 ): boolean {
   const userElo = useUserProfileStore().profile?.endgameElo ?? 0
-  if (userElo <= 1000) return false
+  if (userElo <= MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON) return false
   if (isOutsidePuzzleGoal('win', scoreCP, scoreMate, tablebaseCategory)) return false
   const initialFen = historyEntries.value[0]?.fen
-  if (initialFen && isBareKingVsMajorPiece(initialFen)) return false
-  return isBareKingVsMajorPiece(fen)
+  if (initialFen && isBareKingVsMajorPiece(initialFen, playerColor)) return false
+  return isBareKingVsMajorPiece(fen, playerColor)
 }
 
 function shouldQueryTablebase(fen: string): boolean {
@@ -887,82 +866,42 @@ async function awaitPromotionChoice(
   return chosen
 }
 
-async function raceForBestMove(
-  currentFen: string,
-  isPremove: boolean,
-): Promise<{
-  bestmove: string | null
-  evalResult: EngineEvaluation
-  tbData: TablebaseResult | null
-}> {
-  let evalResult: EngineEvaluation = { bestMove: null, scoreCP: null, scoreMate: null }
-  let tbData: TablebaseResult | null = null
-
-  const { fen: startFen, moves } = getPositionArgs()
-  const enginePromise = engine.getBestMove(
-    startFen,
-    moves,
-    isPremove ? PREMOVE_ENGINE_THINKING_TIME_MS : undefined,
-  )
-  const tablebasePromise: Promise<TablebaseResult | null> = shouldQueryTablebase(currentFen)
-    ? tablebase.query(currentFen)
-    : Promise.resolve(null)
-
-  // Resolves only when tablebase returns a concrete move — otherwise stays pending so engine wins
-  const tbMovePromise = new Promise<string>((resolve) => {
-    tablebasePromise
-      .then((result) => {
-        tbData = result
-        const temperature = props.isRatedAttempt ? TEMPERATURE_RATED : TEMPERATURE_RETRY
-        const move = result ? tablebase.selectBestMove(result, temperature, currentFen) : null
-        if (move) resolve(move)
-      })
-      .catch(() => {
-        // tablebase failed — engine will win the race
-      })
-  })
-
-  const engineMovePromise = enginePromise
-    .then((result) => {
-      evalResult = result
-      return result.bestMove
-    })
-    .catch((): string | null => null)
-
-  // Safety net: if both engine and tablebase hang (e.g. engine crash, network failure),
-  // resolve with null after a generous timeout so the board never freezes permanently.
-  // The clock only starts once the engine is actually ready — it can otherwise still be
-  // downloading its WASM binary, which legitimately takes far longer than 15s on a slow
-  // connection and isn't itself a hang.
-  const timeoutPromise = new Promise<null>((resolve) => {
-    const startTimer = (): void => {
-      setTimeout(() => resolve(null), 15_000)
-    }
-    if (engine.isReady.value) {
-      startTimer()
-    } else {
-      const stopWatch = watch(engine.isReady, (ready) => {
-        if (ready) {
-          stopWatch()
-          startTimer()
-        }
-      })
-    }
-  })
-
-  const bestmove = await Promise.race([tbMovePromise, engineMovePromise, timeoutPromise])
-  return { bestmove, evalResult, tbData }
-}
-
-function checkExerciseFailure(evalResult: EngineEvaluation, tbData: TablebaseResult | null): void {
+async function checkExerciseFailure(
+  gen: number,
+  fen: string,
+  selection: MoveSelectionResult,
+): Promise<void> {
   const exercise = useExercisesStore().currentExercise
   if (!exercise) return
-  const isOutsideGoal = isOutsidePuzzleGoal(
+  const tablebaseCategory = selection.tbData?.category ?? null
+  let isOutsideGoal = isOutsidePuzzleGoal(
     exercise.expectedResult,
-    evalResult.scoreCP,
-    evalResult.scoreMate,
-    tbData?.category ?? null,
+    selection.scoreCP,
+    selection.scoreMate,
+    tablebaseCategory,
   )
+
+  // The engine's first search only gets ~400ms and can misjudge a position as won/lost
+  // when it's actually a known draw (e.g. wrong-coloured bishop with a rook pawn) simply
+  // because it hasn't looked deep enough yet. A false "Wrong solution!" here would fail
+  // the puzzle even though the player did nothing wrong, so when the verdict came from
+  // the engine score rather than an authoritative tablebase category, re-run a short
+  // single-line search and only confirm the failure if it agrees.
+  const isTablebaseVerdict = tablebaseCategory !== null && tablebaseCategory !== 'unknown'
+  if (isOutsideGoal && !isTablebaseVerdict) {
+    const recheckLines = await engine
+      .getBestMoves(fen, [], FAILURE_RECHECK_THINKING_TIME_MS, 1)
+      .catch((): EngineLine[] => [])
+    if (moveGeneration !== gen) return
+    const recheckLine = recheckLines[0]
+    isOutsideGoal = isOutsidePuzzleGoal(
+      exercise.expectedResult,
+      recheckLine?.scoreCP ?? null,
+      recheckLine?.scoreMate ?? null,
+      null,
+    )
+  }
+
   emit('goal-evaluated', isOutsideGoal)
 }
 
@@ -1009,25 +948,35 @@ async function applyEngineReply(bestmove: string): Promise<void> {
   cg.playPremove()
 }
 
-// Races the engine/tablebase for a reply and applies it, shared by the normal
-// post-player-move flow and by leaveAnalysisMode() when analysis is left with
-// the computer on move.
+// Selects the computer's reply (engine lines filtered/weighted via tablebase — see
+// useMoveSelector) and applies it, shared by the normal post-player-move flow and by
+// leaveAnalysisMode() when analysis is left with the computer on move.
 async function triggerEngineTurn(gen: number, isPremove = false): Promise<void> {
   if (!chess || !cg) return
-  const { bestmove, evalResult, tbData } = await raceForBestMove(chess.fen(), isPremove)
+  const currentFen = chess.fen()
+  const { fen: startFen, moves } = getPositionArgs()
+  const selection = await moveSelector.getBestMove(startFen, moves, currentFen, {
+    temperature: props.isRatedAttempt ? TEMPERATURE_RATED : TEMPERATURE_RETRY,
+    isPremove,
+    playerColor,
+    queryTablebase: shouldQueryTablebase(currentFen),
+    userElo: useUserProfileStore().profile?.endgameElo ?? 0,
+    shouldAbort: () => moveGeneration !== gen,
+  })
 
   if (moveGeneration !== gen || !chess || !cg) return
 
-  checkExerciseFailure(evalResult, tbData)
+  await checkExerciseFailure(gen, currentFen, selection)
 
+  if (moveGeneration !== gen || !chess || !cg) return
+
+  const { bestmove, scoreCP, scoreMate, tbData } = selection
   if (!bestmove) {
     restorePlayerMovable()
     return
   }
 
-  if (
-    shouldAutoSolve(chess.fen(), evalResult.scoreCP, evalResult.scoreMate, tbData?.category ?? null)
-  ) {
+  if (shouldAutoSolve(chess.fen(), scoreCP, scoreMate, tbData?.category ?? null)) {
     endGame('win')
     return
   }
@@ -1156,12 +1105,12 @@ async function resolveBestMoveUci(): Promise<string | null> {
   const currentFen = chess.fen()
   const { fen: startFen, moves } = getPositionArgs()
   const [engineResult, tbResult] = await Promise.allSettled([
-    engine.getBestMove(startFen, moves),
+    engine.getBestMoves(startFen, moves),
     shouldQueryTablebase(currentFen) ? tablebase.query(currentFen) : Promise.resolve(null),
   ])
   const tbMove = tbResult.status === 'fulfilled' ? (tbResult.value?.moves[0]?.uci ?? null) : null
   if (tbMove) return tbMove
-  return engineResult.status === 'fulfilled' ? engineResult.value.bestMove : null
+  return engineResult.status === 'fulfilled' ? (engineResult.value[0]?.moves[0] ?? null) : null
 }
 
 const canPlayBestMove = computed(() => {

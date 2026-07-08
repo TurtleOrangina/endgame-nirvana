@@ -1,5 +1,16 @@
 import { ref, type Ref } from 'vue'
-import type { EngineEvaluation, EngineLine } from '@/types'
+import type { EngineLine } from '@/types'
+
+// Thinking-time budgets for every kind of engine search, kept together so their
+// relative sizes stay easy to compare.
+export const DEFAULT_BEST_MOVE_THINKING_TIME_MS = 400
+// Wide shallow searches probing the user's upcoming positions for the Trickster weighting
+export const PROBE_THINKING_TIME_MS = 20
+// Replying to a premove has to feel instant
+export const PREMOVE_THINKING_TIME_MS = 50
+// Second opinion before failing a puzzle (or trusting a zeroing move) on an
+// engine-only verdict, when no authoritative tablebase answer is available
+export const FAILURE_RECHECK_THINKING_TIME_MS = 400
 
 export interface EngineDownloadProgress {
   percent: number
@@ -13,7 +24,12 @@ export interface StockfishEngine {
   isReady: Ref<boolean>
   isThinking: Ref<boolean>
   downloadProgress: Ref<EngineDownloadProgress | null>
-  getBestMove(fen: string, moves?: string[], thinkingTimeMs?: number): Promise<EngineEvaluation>
+  getBestMoves(
+    fen: string,
+    moves?: string[],
+    thinkingTimeMs?: number,
+    multipv?: number,
+  ): Promise<EngineLine[]>
   getAnalysis(
     fen: string,
     lines: number,
@@ -33,15 +49,6 @@ interface PendingSearch {
   onProgress?: (lines: EngineLine[]) => void
 }
 
-const DEFAULT_BEST_MOVE_THINKING_TIME_MS = 400
-
-interface PendingBestMove {
-  fen: string
-  moves: string[]
-  thinkingTimeMs: number
-  resolve: (eval_: EngineEvaluation) => void
-}
-
 let instance: StockfishEngine | null = null
 
 function createEngine(): StockfishEngine {
@@ -49,14 +56,12 @@ function createEngine(): StockfishEngine {
   const isThinking = ref(false)
   const downloadProgress = ref<EngineDownloadProgress | null>(null)
 
-  let resolveBestMove: ((eval_: EngineEvaluation) => void) | null = null
   let resolveAnalysis: ((lines: EngineLine[]) => void) | null = null
   let onProgressCallback: ((lines: EngineLine[]) => void) | null = null
   // When true, we sent `stop` to abort a search and are waiting for its bestmove
   // before we can safely send the next position+go.
   let awaitingStopAck = false
   let pendingSearch: PendingSearch | null = null
-  let pendingBestMove: PendingBestMove | null = null
   let analysisLines: Map<number, EngineLine> = new Map()
   let lastScoreCP: number | null = null
   let lastScoreMate: number | null = null
@@ -67,17 +72,6 @@ function createEngine(): StockfishEngine {
 
   function positionCommand(fen: string, moves: string[]): string {
     return moves.length > 0 ? `position fen ${fen} moves ${moves.join(' ')}` : `position fen ${fen}`
-  }
-
-  // Best-move searches must always run single-line: an aborted analysis search never
-  // reaches the MultiPV reset in the bestmove handler, so without setting it here a
-  // leftover MultiPV=3 would leak into play and skew the position evaluation.
-  function launchBestMoveSearch(pb: PendingBestMove): void {
-    isThinking.value = true
-    resolveBestMove = pb.resolve
-    worker.postMessage('setoption name MultiPV value 1')
-    worker.postMessage(positionCommand(pb.fen, pb.moves))
-    worker.postMessage(`go movetime ${pb.thinkingTimeMs}`)
   }
 
   function launchSearch(ps: PendingSearch): void {
@@ -109,7 +103,7 @@ function createEngine(): StockfishEngine {
       } else if (line.startsWith('info')) {
         // Ignore info lines while waiting for the stop acknowledgement —
         // they belong to the search we just aborted.
-        if ((!resolveBestMove && !resolveAnalysis) || awaitingStopAck) return
+        if (!resolveAnalysis || awaitingStopAck) return
 
         const cpMatch = line.match(/score cp (-?\d+)/)
         const mateMatch = line.match(/score mate (-?\d+)/)
@@ -149,33 +143,35 @@ function createEngine(): StockfishEngine {
           }
         }
       } else if (line.startsWith('bestmove')) {
-        if (resolveBestMove) {
-          const move = line.split(' ')[1]
-          resolveBestMove({
-            bestMove: move && move !== '(none)' ? move : null,
-            scoreCP: lastScoreCP,
-            scoreMate: lastScoreMate,
-          })
-          resolveBestMove = null
-          lastScoreCP = null
-          lastScoreMate = null
-          isThinking.value = false
-        } else if (awaitingStopAck) {
+        if (awaitingStopAck) {
           // Engine has fully stopped — now safe to send new commands.
           awaitingStopAck = false
           if (pendingSearch) {
             const ps = pendingSearch
             pendingSearch = null
             launchSearch(ps)
-          } else if (pendingBestMove) {
-            const pb = pendingBestMove
-            pendingBestMove = null
-            launchBestMoveSearch(pb)
           } else {
             isThinking.value = false
           }
         } else if (resolveAnalysis) {
-          const result = [...analysisLines.values()].sort((a, b) => a.multipvIndex - b.multipvIndex)
+          let result = [...analysisLines.values()].sort((a, b) => a.multipvIndex - b.multipvIndex)
+          // Extremely fast trivial searches can in theory emit a bestmove without any
+          // pv info lines — synthesize a single line from the bestmove token so callers
+          // still get a move. `bestmove (none)` (terminal position) stays an empty result.
+          if (result.length === 0) {
+            const move = line.split(' ')[1]
+            if (move && move !== '(none)') {
+              result = [
+                {
+                  moves: [move],
+                  scoreCP: lastScoreCP,
+                  scoreMate: lastScoreMate,
+                  depth: 0,
+                  multipvIndex: 1,
+                },
+              ]
+            }
+          }
           worker.postMessage('setoption name MultiPV value 1')
           resolveAnalysis(result)
           resolveAnalysis = null
@@ -189,14 +185,10 @@ function createEngine(): StockfishEngine {
     }
 
     worker.onerror = () => {
-      resolveBestMove?.({ bestMove: null, scoreCP: null, scoreMate: null })
-      resolveBestMove = null
       resolveAnalysis?.([])
       resolveAnalysis = null
       pendingSearch?.resolve([])
       pendingSearch = null
-      pendingBestMove?.resolve({ bestMove: null, scoreCP: null, scoreMate: null })
-      pendingBestMove = null
       onProgressCallback = null
       awaitingStopAck = false
       isThinking.value = false
@@ -232,36 +224,13 @@ function createEngine(): StockfishEngine {
     })
   }
 
-  async function getBestMove(
+  function getBestMoves(
     fen: string,
     moves: string[] = [],
     thinkingTimeMs: number = DEFAULT_BEST_MOVE_THINKING_TIME_MS,
-  ): Promise<EngineEvaluation> {
-    await waitForReady()
-
-    if (resolveAnalysis || awaitingStopAck || resolveBestMove) {
-      // A search is already running or stop is in-flight — stop it and queue ourselves.
-      if (!awaitingStopAck) {
-        awaitingStopAck = true
-        onProgressCallback = null
-        resolveAnalysis?.([])
-        resolveAnalysis = null
-        pendingSearch?.resolve([])
-        pendingSearch = null
-        resolveBestMove?.({ bestMove: null, scoreCP: null, scoreMate: null })
-        resolveBestMove = null
-        worker.postMessage('stop')
-      }
-      // Replace any already-queued best-move request.
-      pendingBestMove?.resolve({ bestMove: null, scoreCP: null, scoreMate: null })
-      return new Promise<EngineEvaluation>((resolve) => {
-        pendingBestMove = { fen, moves, thinkingTimeMs, resolve }
-      })
-    }
-
-    return new Promise<EngineEvaluation>((resolve) => {
-      launchBestMoveSearch({ fen, moves, thinkingTimeMs, resolve })
-    })
+    multipv = 1,
+  ): Promise<EngineLine[]> {
+    return getAnalysis(fen, multipv, thinkingTimeMs, moves)
   }
 
   async function getAnalysis(
@@ -273,7 +242,7 @@ function createEngine(): StockfishEngine {
   ): Promise<EngineLine[]> {
     await waitForReady()
 
-    if (resolveAnalysis || awaitingStopAck || resolveBestMove) {
+    if (resolveAnalysis || awaitingStopAck) {
       // A search is running (or we already sent stop and are waiting for its ack).
       // Send stop only once — if awaitingStopAck is already true we've already sent it.
       if (!awaitingStopAck) {
@@ -281,8 +250,6 @@ function createEngine(): StockfishEngine {
         onProgressCallback = null
         resolveAnalysis?.([])
         resolveAnalysis = null
-        resolveBestMove?.({ bestMove: null, scoreCP: null, scoreMate: null })
-        resolveBestMove = null
         worker.postMessage('stop')
       }
       // Cancel any previously queued (but not yet started) search.
@@ -302,8 +269,6 @@ function createEngine(): StockfishEngine {
   function stopAnalysis(): void {
     pendingSearch?.resolve([])
     pendingSearch = null
-    pendingBestMove?.resolve({ bestMove: null, scoreCP: null, scoreMate: null })
-    pendingBestMove = null
     if (resolveAnalysis && !awaitingStopAck) {
       awaitingStopAck = true
       onProgressCallback = null
@@ -313,7 +278,7 @@ function createEngine(): StockfishEngine {
     }
   }
 
-  return { isReady, isThinking, downloadProgress, getBestMove, getAnalysis, stopAnalysis }
+  return { isReady, isThinking, downloadProgress, getBestMoves, getAnalysis, stopAnalysis }
 }
 
 export function useStockfishEngine(): StockfishEngine {

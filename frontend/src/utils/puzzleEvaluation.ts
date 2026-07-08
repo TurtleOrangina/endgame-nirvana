@@ -1,5 +1,20 @@
-import type { TablebaseCategory } from '@/types'
+import type { GameResult, TablebaseCategory } from '@/types'
 import { CATEGORY_RANK } from '@/composables/useLichessTablebase'
+
+// Classifies an engine evaluation (from the perspective of the side the scores belong to)
+// into the outcome the mover can expect. The ±100cp window intentionally matches the
+// thresholds used by isOutsidePuzzleGoal below, so move selection and puzzle failure
+// detection agree on what counts as winning/drawing/losing.
+export function scoreToOutcome(
+  scoreCP: number | null,
+  scoreMate: number | null,
+): GameResult | null {
+  if (scoreMate !== null) return scoreMate > 0 ? 'win' : 'loss'
+  if (scoreCP === null) return null
+  if (scoreCP > 100) return 'win'
+  if (scoreCP < -100) return 'loss'
+  return 'draw'
+}
 
 // scoreCP/scoreMate come straight from the engine, so they're relative to whichever side is to
 // move in the analyzed position — in practice the opponent, since evaluation always runs right

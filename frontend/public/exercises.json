@@ -2335,6 +2335,11 @@
   ],
   "/Pawn Endgames/Pawn Races and Counting": [
     {
+      "fen": "8/7K/8/5pp1/5P2/8/4k2P/8_w_-_-_0_59",
+      "expected_result": "win",
+      "difficulty": 670
+    },
+    {
       "fen": "1K6/8/5p2/Pk4p1/6P1/8/8/8_w_-_-_0_1",
       "expected_result": "win",
       "difficulty": 1800
