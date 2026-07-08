@@ -24,7 +24,7 @@ export function isOutsidePuzzleGoal(
 
   const effectiveCp = scoreMate === null ? scoreCP : scoreMate > 0 ? Infinity : -Infinity
   if (effectiveCp === null) return false
-  if (goal === 'win') return effectiveCp >= 0
+  if (goal === 'win') return effectiveCp >= -100
   if (goal === 'draw') return effectiveCp >= 100
   return false
 }
