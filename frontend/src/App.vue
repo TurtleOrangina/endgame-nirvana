@@ -9,7 +9,12 @@ import { useSyncStore } from '@/stores/sync'
 import { useStockfishEngine } from '@/composables/useStockfishEngine'
 import { useResultAudio } from '@/composables/useResultAudio'
 import { useLichessAuth } from '@/composables/useLichessAuth'
-import { parseCurrentRoute, buildRouteUrl, matchLegalRoute } from '@/composables/useAppRouter'
+import {
+  parseCurrentRoute,
+  buildRouteUrl,
+  matchLegalRoute,
+  type AppView,
+} from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
 import LegalPage from '@/components/LegalPage.vue'
 import { useWakeLock } from '@/composables/useWakeLock'
@@ -123,12 +128,18 @@ function getRecentAttemptStatus(exerciseId: string): PuzzleStatus | null {
   return null
 }
 
+// Keyed on the exercise id rather than the currentExercise object itself: the
+// background catalog refresh in exercises.ts's store.load() replaces `allExercises`
+// (and therefore the object `currentExercise` resolves to) with fresh references even
+// when the puzzle set hasn't changed, which would otherwise spuriously reset analysis
+// mode and puzzle status for a puzzle that's still the one on the board.
 // flush:'sync' so the watcher fires synchronously during store mutations,
 // allowing callers to override state (e.g. isAnalysisMode) immediately after.
 watch(
-  currentExercise,
-  (exercise) => {
-    if (!exercise) return
+  () => currentExercise.value?.id,
+  (id) => {
+    const exercise = currentExercise.value
+    if (!exercise || !id) return
     const recent = getRecentAttemptStatus(exercise.id)
     puzzleStatus.value = recent ?? PuzzleStatus.SOLVING
     isWrongSolution.value = false
@@ -176,7 +187,8 @@ onMounted(async () => {
     history.replaceState(null, '', '/profile')
   } else {
     await store.load(route.fen ?? undefined)
-    if (route.view === 'analysis' && currentExercise.value) {
+    const exercise = currentExercise.value
+    if (route.view === 'analysis' && exercise && store.hasSolvedRecently(exercise.id)) {
       isAnalysisMode.value = true
       await nextTick()
       startAnalysisMode()
@@ -185,7 +197,7 @@ onMounted(async () => {
       history.replaceState(
         null,
         '',
-        buildRouteUrl(route.view === 'analysis' ? 'analysis' : 'training', currentRawFen.value),
+        buildRouteUrl(isAnalysisMode.value ? 'analysis' : 'training', currentRawFen.value),
       )
     }
   }
@@ -228,6 +240,23 @@ watch(
   { immediate: true },
 )
 
+// Enters analysis mode for the current exercise if the route asks for it and the puzzle
+// has actually been solved recently (see exercises store's hasSolvedRecently) — jumping
+// straight into analysis for a puzzle that hasn't been solved would let the player read
+// engine lines and then "solve" it with borrowed knowledge. Otherwise corrects the URL
+// back to training so it doesn't claim analysis mode while the board stays in solving mode.
+function enterAnalysisIfAllowed(route: { view: AppView; fen: string | null }): void {
+  const exercise = currentExercise.value
+  if (route.view === 'analysis' && exercise && store.hasSolvedRecently(exercise.id)) {
+    isAnalysisMode.value = true
+    nextTick(() => {
+      startAnalysisMode()
+    }).catch(() => undefined)
+  } else if (route.view === 'analysis') {
+    history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
+  }
+}
+
 function handlePopState(): void {
   suppressUrlUpdate = true
   const route = parseCurrentRoute()
@@ -245,22 +274,13 @@ function handlePopState(): void {
   if (exerciseChanged && route.fen) {
     store.selectById(route.fen.replaceAll('_', ' '))
     // sync watcher has already reset isAnalysisMode to false
-    if (route.view === 'analysis') {
-      isAnalysisMode.value = true
-      nextTick(() => {
-        startAnalysisMode()
-      }).catch(() => undefined)
-    }
+    enterAnalysisIfAllowed(route)
   } else {
     // Same exercise: handle analysis mode transition
-    const enterAnalysis = route.view === 'analysis' && !isAnalysisMode.value
-    const leaveAnalysis = route.view !== 'analysis' && isAnalysisMode.value
-    if (enterAnalysis) {
-      isAnalysisMode.value = true
-      nextTick(() => {
-        startAnalysisMode()
-      }).catch(() => undefined)
-    } else if (leaveAnalysis) {
+    const wantsAnalysis = route.view === 'analysis'
+    if (wantsAnalysis && !isAnalysisMode.value) {
+      enterAnalysisIfAllowed(route)
+    } else if (!wantsAnalysis && isAnalysisMode.value) {
       isAnalysisMode.value = false
       analysisPaused.value = false
       analysisLines.value = []
@@ -555,7 +575,16 @@ function navigateToTraining(): void {
   currentView.value = 'training'
 }
 
+// Navigating to the profile page unmounts ChessBoard entirely (see the v-else-if chain
+// in the template), which resets its own analysis state on remount — but App's isAnalysisMode
+// and analysis panel state must be reset here too, or returning to training would show the
+// analysis sidebar over a freshly non-analysis board.
 function navigateToProfile(): void {
+  isAnalysisMode.value = false
+  analysisPaused.value = false
+  analysisLines.value = []
+  analysisTablebase.value = null
+  analysisFen.value = ''
   history.pushState(null, '', '/profile')
   currentView.value = 'profile'
 }

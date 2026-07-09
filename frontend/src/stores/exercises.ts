@@ -666,6 +666,23 @@ export const useExercisesStore = defineStore('exercises', () => {
     localStorage.setItem('solvedExercises', JSON.stringify(Object.fromEntries(merged)))
   }
 
+  // Whether exerciseId has a solved attempt within the same recent-attempt window used to
+  // keep it out of the random-selection pool (see recentlyAttemptedIds). Used to gate
+  // analysis mode: jumping straight into analysis for a puzzle that hasn't actually been
+  // solved (recently) would let the player read engine lines and then "solve" it with
+  // borrowed knowledge.
+  function hasSolvedRecently(exerciseId: string): boolean {
+    const history = useUserProfileStore().profile?.eloHistory ?? []
+    const cutoff = Date.now() - RECENT_ATTEMPT_EXCLUSION_MS
+    for (let i = history.length - 1; i >= 0; i--) {
+      const entry = history[i]
+      if (!entry) break
+      if (new Date(entry.timestamp).getTime() < cutoff) break
+      if (entry.exerciseId === exerciseId && entry.solved === true) return true
+    }
+    return false
+  }
+
   // Selects an exercise by id (its original fen) and rolls a fresh random
   // transformation for it. Returns false if no such exercise exists.
   function selectById(id: string): boolean {
@@ -751,6 +768,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     load,
     recordSolved,
     recordFailed,
+    hasSolvedRecently,
     selectById,
     selectByIdWithTransform,
     advanceToNext,
