@@ -68,6 +68,11 @@ const currentBoardFen = computed(
 // URL, regardless of which transformation is currently displayed. This is what lets
 // a fresh page load re-roll a random orientation while the URL itself stays stable.
 const currentRawFen = computed(() => currentExercise.value?.fen.replaceAll(' ', '_') ?? null)
+const shareUrl = computed(() =>
+  currentRawFen.value
+    ? `${window.location.origin}${buildRouteUrl('training', currentRawFen.value)}`
+    : null,
+)
 const { profile, sessionSolved, sessionFailed, sessionEloChange, lastEloChange } =
   storeToRefs(userProfileStore)
 
@@ -209,6 +214,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('popstate', handlePopState)
   systemThemeQuery.removeEventListener('change', applySystemTheme)
+  clearTimeout(linkCopiedTimeout)
 })
 
 const systemThemeQuery = window.matchMedia('(prefers-color-scheme: light)')
@@ -443,6 +449,31 @@ function onAnalyse(): void {
   isAnalysisMode.value = true
   startAnalysisMode()
   history.pushState(null, '', buildRouteUrl('analysis', currentRawFen.value))
+}
+
+const linkCopied = ref(false)
+let linkCopiedTimeout: ReturnType<typeof setTimeout> | undefined
+
+// Prefers the OS share sheet (lets the user pick a messenger app directly) where
+// available — mainly mobile browsers — falling back to a clipboard copy with a
+// brief confirmation elsewhere.
+async function onShare(): Promise<void> {
+  const url = shareUrl.value
+  if (!url) return
+  if (navigator.share) {
+    try {
+      await navigator.share({ url })
+    } catch {
+      // User cancelled the share sheet or the browser rejected it — nothing to do.
+    }
+    return
+  }
+  await navigator.clipboard.writeText(url)
+  linkCopied.value = true
+  clearTimeout(linkCopiedTimeout)
+  linkCopiedTimeout = setTimeout(() => {
+    linkCopied.value = false
+  }, 2000)
 }
 
 function onLeaveAnalysis(): void {
@@ -1034,6 +1065,31 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                 </template>
                 <span class="engine-status-text">{{ engineStatusText }}</span>
               </div>
+
+              <!-- Share -->
+              <button
+                v-if="currentExercise && puzzleStatus !== PuzzleStatus.SOLVING"
+                class="btn-action btn-share"
+                :title="t((s) => s.app.shareTitle)"
+                @click="onShare"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <path d="m8.59 13.51 6.83 3.98" />
+                  <path d="m15.41 6.51-6.82 3.98" />
+                </svg>
+                {{ linkCopied ? t((s) => s.app.linkCopied) : t((s) => s.app.share) }}
+              </button>
             </template>
           </div>
         </div>
@@ -1617,6 +1673,17 @@ body {
 }
 
 .btn-analyse:hover {
+  background: var(--hover-bg);
+}
+
+.btn-share {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  width: 100%;
+}
+
+.btn-share:hover {
   background: var(--hover-bg);
 }
 
