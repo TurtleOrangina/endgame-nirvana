@@ -6698,6 +6698,11 @@
   ],
   "/Rook vs Pawns/Rook vs 2 Connected Pawns": [
     {
+      "fen": "1k6/p1p5/1p4K1/8/2P1ppp1/1P6/P6P/5R2_b_-_-_0_1",
+      "expected_result": "win",
+      "difficulty": 1300
+    },
+    {
       "fen": "1R6/8/8/8/3k2K1/1pp5/8/8_w_-_-_0_1",
       "expected_result": "draw",
       "difficulty": 1592
