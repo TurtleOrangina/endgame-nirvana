@@ -1273,7 +1273,12 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.75rem;
+  /* Matches the rendered width of .board-area + its 2rem gap + .sidebar's 280px, so the
+     header can cap itself to the same width the two-col training layout actually takes up
+     (rather than the fixed 720px used by the other, single-column pages). */
+  --two-col-content-width: min(calc(100vw - 40px - 2rem), calc(100vh - 5rem + 280px));
 }
 
 .board-area {

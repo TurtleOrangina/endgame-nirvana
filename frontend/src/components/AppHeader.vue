@@ -43,7 +43,7 @@ function onNavigate(view: NavView): void {
 </script>
 
 <template>
-  <div class="app-header">
+  <div class="app-header" :class="{ wide: activeView === 'training' }">
     <div class="header-left">
       <NavIcon :icon="activeIcon" class="title-icon" />
       <span class="board-title">{{ title }}</span>
@@ -85,9 +85,23 @@ function onNavigate(view: NavView): void {
 <style scoped>
 .app-header {
   width: 100%;
+  max-width: 720px;
   display: flex;
   align-items: center;
   gap: 2rem;
+}
+
+/* On the training view, the board+sidebar layout below can grow wider than the fixed
+   720px other pages use — match that width so the menu button stays above the sidebar
+   instead of being capped narrower than the content underneath it. */
+.app-header.wide {
+  max-width: var(--two-col-content-width, 720px);
+}
+
+@media (max-width: 720px) {
+  .app-header.wide {
+    max-width: 720px;
+  }
 }
 
 .header-left {
