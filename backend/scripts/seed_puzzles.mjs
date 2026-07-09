@@ -1,11 +1,23 @@
 #!/usr/bin/env node
 // Seeds/refreshes the public.puzzles table from an already-deduped
-// exercises.json via the seed_puzzles RPC. Zero dependencies — uses only
-// Node builtins + global fetch. Run via `sh scripts/db.sh seed <path>`,
+// exercises.json via the seed_puzzles RPC. By default the server-side pool is
+// made to exactly match the file: after seeding, puzzles missing from the file
+// are deleted via the prune_puzzles RPC (their attempt history survives —
+// attempts.puzzle_id is `on delete set null`). Pass --only-add to skip the
+// prune and leave puzzles not in the file untouched. Zero dependencies — uses
+// only Node builtins + global fetch. Run via `sh scripts/db.sh seed [path]`,
 // which sources backend/.env first.
+//
+// Usage: node scripts/seed_puzzles.mjs [--only-add] [path-to-exercises.json]
+// Defaults to ../frontend/public/exercises.json (relative to this script),
+// analogous to export_puzzles.mjs.
 
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const backendDir = dirname(dirname(fileURLToPath(import.meta.url)))
+const DEFAULT_INPUT_PATH = join(backendDir, '..', 'frontend', 'public', 'exercises.json')
 
 const BATCH_SIZE = 500
 
@@ -53,32 +65,30 @@ function loadPuzzles(exercisesJsonPath) {
   return puzzles
 }
 
-async function seedBatch(supabaseUrl, secretKey, batch) {
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/seed_puzzles`, {
+async function callRpc(supabaseUrl, secretKey, rpcName, body) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${rpcName}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       apikey: secretKey,
       Authorization: `Bearer ${secretKey}`,
     },
-    body: JSON.stringify({ p_puzzles: batch }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
-    const body = await response.text()
-    throw new Error(`seed_puzzles RPC failed (${response.status}): ${body}`)
+    const errorBody = await response.text()
+    throw new Error(`${rpcName} RPC failed (${response.status}): ${errorBody}`)
   }
 
   return response.json()
 }
 
 async function main() {
-  const exercisesJsonPathArg = process.argv[2]
-  if (!exercisesJsonPathArg) {
-    console.error('Usage: node scripts/seed_puzzles.mjs <path-to-exercises.json>')
-    process.exit(1)
-  }
-  const exercisesJsonPath = resolve(exercisesJsonPathArg)
+  const args = process.argv.slice(2)
+  const onlyAdd = args.includes('--only-add')
+  const exercisesJsonPathArg = args.find((arg) => arg !== '--only-add')
+  const exercisesJsonPath = resolve(exercisesJsonPathArg || DEFAULT_INPUT_PATH)
 
   const supabaseUrl = requireEnv('SUPABASE_PUBLIC_URL')
   const secretKey = requireEnv('SUPABASE_SECRET_KEY')
@@ -89,12 +99,20 @@ async function main() {
   let seeded = 0
   for (let start = 0; start < puzzles.length; start += BATCH_SIZE) {
     const batch = puzzles.slice(start, start + BATCH_SIZE)
-    const count = await seedBatch(supabaseUrl, secretKey, batch)
+    const count = await callRpc(supabaseUrl, secretKey, 'seed_puzzles', { p_puzzles: batch })
     seeded += count
     console.log(`Seeded batch ${start / BATCH_SIZE + 1}: ${count} puzzles (${seeded}/${puzzles.length} total)`)
   }
 
-  console.log(`Done. Seeded ${seeded} puzzles.`)
+  if (onlyAdd) {
+    console.log(`Done. Seeded ${seeded} puzzles (--only-add: server-side puzzles not in the file were kept).`)
+    return
+  }
+
+  const pruned = await callRpc(supabaseUrl, secretKey, 'prune_puzzles', {
+    p_keep_ids: puzzles.map((puzzle) => puzzle.id),
+  })
+  console.log(`Done. Seeded ${seeded} puzzles, pruned ${pruned} no longer in the file.`)
 }
 
 main().catch((error) => {

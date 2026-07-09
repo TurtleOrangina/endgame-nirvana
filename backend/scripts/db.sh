@@ -7,8 +7,11 @@
 # Usage:
 #   sh scripts/db.sh push                        # apply pending migrations
 #   sh scripts/db.sh types                        # generate frontend/src/types/database.ts
-#   sh scripts/db.sh seed <path-to-exercises.json> # seed public.puzzles from exercises.json
-#   sh scripts/db.sh all <path-to-exercises.json>  # push + types + seed
+#   sh scripts/db.sh seed [--only-add] [path-to-exercises.json] # seed public.puzzles from exercises.json
+#                                                  # (path defaults to ../frontend/public/exercises.json;
+#                                                  #  default prunes puzzles missing from the file,
+#                                                  #  --only-add keeps them)
+#   sh scripts/db.sh all [path-to-exercises.json]  # push + types + seed
 #
 # If the connection pooler rejects the CLI, connect directly instead:
 #   docker exec -i supabase-db psql -U postgres -d postgres < supabase/migrations/<file>.sql
@@ -39,24 +42,21 @@ types() {
 }
 
 seed() {
-    if [ -z "$1" ]; then
-        echo "Usage: sh scripts/db.sh seed <path-to-exercises.json>" >&2
-        exit 1
-    fi
-    node scripts/seed_puzzles.mjs "$1"
+    node scripts/seed_puzzles.mjs "$@"
 }
 
 case "$1" in
     push) push ;;
     types) types ;;
-    seed) seed "$2" ;;
+    seed) shift; seed "$@" ;;
     all)
         push
         types
-        seed "$2"
+        shift
+        seed "$@"
         ;;
     *)
-        echo "Usage: sh scripts/db.sh push|types|seed|all [path-to-exercises.json]" >&2
+        echo "Usage: sh scripts/db.sh push|types|seed|all [--only-add] [path-to-exercises.json]" >&2
         exit 1
         ;;
 esac

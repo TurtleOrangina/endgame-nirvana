@@ -19,7 +19,7 @@ Chess endgame training app called **endgame-nirvana**. Two independent component
 - `backend/` — Self-hosted Supabase stack (Docker Compose) → [`backend/CLAUDE.md`](backend/CLAUDE.md)
 - `frontend/` — Vue 3 SPA (Vite+ / TypeScript / Pinia) → [`frontend/CLAUDE.md`](frontend/CLAUDE.md)
 
-Puzzle data (`exercises.json`) is produced by a separate scraping project, not part of this repo. The frontend bundles it as a static asset (`frontend/public/exercises.json`, not committed) rather than downloading it from the backend at runtime — see `frontend/src/stores/exercises.ts`. `backend/scripts/seed_puzzles.mjs` takes a path to an `exercises.json` file to seed a fresh database, and `backend/scripts/export_puzzles.mjs` does the inverse (pulls the current, server-learned puzzle pool out of prod) so `exercises.json` can periodically be refreshed with up-to-date difficulties.
+Puzzle data (`exercises.json`) is produced by a separate scraping project, not part of this repo. The frontend bundles it as a static asset (`frontend/public/exercises.json`, not committed) rather than downloading it from the backend at runtime — see `frontend/src/stores/exercises.ts`. `backend/scripts/seed_puzzles.mjs` seeds the database from an `exercises.json` file (defaulting to the bundled frontend asset; by default it also prunes server-side puzzles missing from the file — `--only-add` skips that), and `backend/scripts/export_puzzles.mjs` does the inverse (pulls the current, server-learned puzzle pool out of prod) so `exercises.json` can periodically be refreshed with up-to-date difficulties — refreshing only the difficulty values when the file already exists, so manual corrections to it survive.
 
 ## Deployment
 

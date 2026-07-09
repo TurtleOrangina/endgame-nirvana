@@ -19,6 +19,13 @@
 // `supabase link`'s .temp file. Zero dependencies — uses only Node builtins + global
 // fetch.
 //
+// If the output file already exists, it is treated as the source of truth for the
+// puzzle set: only each existing puzzle's difficulty is refreshed from the server's
+// learned current_elo, while categories, expected_result (which may carry manual
+// corrections), and locally removed puzzles are left untouched. Server puzzles not
+// present in the local file are ignored. A fresh full export is only written when
+// the output file does not exist yet.
+//
 // Usage: node scripts/export_puzzles.mjs [path-to-write-exercises.json]
 // Defaults to ../frontend/public/exercises.json (relative to this script).
 
@@ -116,6 +123,31 @@ function toExercisesJson(puzzles) {
   return data
 }
 
+// Refreshes only the difficulty of puzzles already present in the existing file,
+// keeping its puzzle set, categories, and expected_result values as-is.
+function mergeDifficultiesIntoExisting(existingData, puzzles) {
+  const eloByFen = new Map(puzzles.map((puzzle) => [puzzle.id.replaceAll(' ', '_'), puzzle.current_elo]))
+
+  let updated = 0
+  let missingFromServer = 0
+  for (const exercises of Object.values(existingData)) {
+    for (const exercise of exercises) {
+      const currentElo = eloByFen.get(exercise.fen)
+      if (currentElo === undefined) {
+        missingFromServer += 1
+        continue
+      }
+      exercise.difficulty = currentElo
+      updated += 1
+    }
+  }
+  console.log(`Updated difficulty for ${updated} puzzles from the existing file`)
+  if (missingFromServer > 0) {
+    console.log(`${missingFromServer} local puzzles have no server row — left unchanged`)
+  }
+  return existingData
+}
+
 const DEFAULT_OUTPUT_PATH = join(backendDir, '..', 'frontend', 'public', 'exercises.json')
 
 async function main() {
@@ -127,7 +159,9 @@ async function main() {
   const puzzles = await fetchPuzzles(supabaseUrl, secretKey)
   console.log(`Fetched ${puzzles.length} puzzles`)
 
-  const data = toExercisesJson(puzzles)
+  const data = existsSync(outputPath)
+    ? mergeDifficultiesIntoExisting(JSON.parse(readFileSync(outputPath, 'utf-8')), puzzles)
+    : toExercisesJson(puzzles)
   writeFileSync(outputPath, JSON.stringify(data, null, 2))
   console.log(`Wrote ${outputPath}`)
 }
