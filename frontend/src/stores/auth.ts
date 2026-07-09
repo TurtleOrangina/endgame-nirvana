@@ -98,7 +98,13 @@ export const useAuthStore = defineStore('auth', () => {
 
     await consumeRecoveryTokenFromUrl()
 
-    if (session.value) await useSyncStore().pullRemoteState()
+    // Fire-and-forget: the cloud pull is best-effort background sync (see the
+    // frontend CLAUDE.md's Backend section), not a precondition for the rest of the
+    // app to render. Awaiting it here would block init() — and therefore App.vue's
+    // onMounted, which loads the (fully offline-capable) exercise catalog only
+    // after init() resolves — on a network round trip that can hang for many
+    // seconds with no connectivity (e.g. flight mode) before failing.
+    if (session.value) void useSyncStore().pullRemoteState()
   }
 
   // The password-reset email links straight back to the app with a token_hash

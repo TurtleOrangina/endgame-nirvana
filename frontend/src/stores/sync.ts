@@ -103,6 +103,9 @@ export const useSyncStore = defineStore('sync', () => {
   async function performFlush(): Promise<void> {
     if (!supabase) return
     if (outbox.value.length === 0 && !profileDirty.value) return
+    // No point starting a request known to fail — this skips a network round trip that
+    // would otherwise sit and wait for the browser to notice there's no connection.
+    if (!navigator.onLine) return
 
     isSyncing.value = true
     try {
@@ -198,6 +201,7 @@ export const useSyncStore = defineStore('sync', () => {
   // backend_plan.md) using that now-up-to-date state.
   async function pullRemoteState(): Promise<void> {
     if (!supabase) return
+    if (!navigator.onLine) return
     try {
       // Push any locally-accumulated but not-yet-synced profile/attempts first —
       // otherwise the "cloud wins" apply below would silently discard them. Note

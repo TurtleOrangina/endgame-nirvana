@@ -110,6 +110,10 @@ function persistExercisesCache(cache: ExercisesCache): void {
 // is never cached, see public/_headers). Returns null on any failure so callers can
 // fall back to the last-known-good cache.
 async function fetchPuzzleCatalog(): Promise<PuzzleRow[] | null> {
+  // No point starting a request known to fail — this skips a network round trip that
+  // would otherwise sit and wait for the browser to notice there's no connection
+  // (which can take much longer than an immediately-rejected offline fetch would).
+  if (!navigator.onLine) return null
   try {
     const manifestResponse = await fetch(EXERCISES_MANIFEST_URL)
     if (!manifestResponse.ok) return null
