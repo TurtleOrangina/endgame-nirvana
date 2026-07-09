@@ -9,7 +9,7 @@ import type { Json, Tables } from '@/types/database'
 
 const OUTBOX_STORAGE_KEY = 'syncOutbox'
 const PROFILE_DIRTY_STORAGE_KEY = 'syncProfileDirty'
-const FLUSH_DEBOUNCE_MS = 30_000
+const FLUSH_DEBOUNCE_MS = 2_000
 
 // Postgres error code for a foreign key violation.
 const FOREIGN_KEY_VIOLATION = '23503'
@@ -25,15 +25,21 @@ function extractMissingPuzzleId(details: string | null): string | null {
 localStorage.removeItem('puzzleEloOverrides')
 
 // Mirrors record_attempts' expected jsonb shape (backend/supabase/migrations).
+// Elo fields are deliberately absent — user Elo is server-authoritative now,
+// computed by record_attempts itself (see performFlush's handling of its
+// response), not pushed by the client.
 export interface PendingAttempt {
   client_attempt_id: string
   puzzle_id: string
   transform_code: string
   solved: boolean
-  user_elo_before: number
-  elo_change: number
-  new_elo: number
   attempted_at: string
+}
+
+function extractAuthoritativeElo(data: unknown): number | null {
+  if (!data || typeof data !== 'object') return null
+  const endgameElo = (data as { endgame_elo?: unknown }).endgame_elo
+  return typeof endgameElo === 'number' ? endgameElo : null
 }
 
 interface PullStateResult {
@@ -127,11 +133,15 @@ export const useSyncStore = defineStore('sync', () => {
         // genuinely broken RPC can't loop forever.
         let synced = false
         for (let i = 0; i <= outbox.value.length; i++) {
-          const { error } = await supabase.rpc('record_attempts', {
+          const { data, error } = await supabase.rpc('record_attempts', {
             p_attempts: outbox.value as unknown as Json,
           })
           if (!error) {
             synced = true
+            const authoritativeElo = extractAuthoritativeElo(data)
+            if (authoritativeElo !== null) {
+              useUserProfileStore().applyServerElo(authoritativeElo)
+            }
             break
           }
           const badPuzzleId =
@@ -158,11 +168,10 @@ export const useSyncStore = defineStore('sync', () => {
           const { data, error } = await supabase
             .from('profiles')
             .update({
-              // Puzzle counters are deliberately absent: they're server-derived
-              // by record_attempts, and the client's update grant no longer
-              // covers those columns.
+              // Puzzle counters and endgame_elo are deliberately absent:
+              // they're server-derived by record_attempts, and the client's
+              // update grant no longer covers those columns.
               username: profile.username,
-              endgame_elo: profile.endgameElo,
               settings: {
                 difficultyPreference: profile.difficultyPreference,
                 analysisEnginePaused: profile.analysisEnginePaused,

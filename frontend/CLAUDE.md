@@ -27,11 +27,18 @@ so a no-backend build keeps working exactly as before.
   `onMounted`), since it awaits the initial cloud pull if a session already exists.
 - `src/stores/sync.ts` — the write-behind outbox: batches `PendingAttempt[]` and a
   `profileDirty` flag into at most two requests (one `record_attempts` RPC, one `profiles`
-  update) per 30s debounce window, flushing also on reconnect, tab-hide, and login.
-- **User Elo is client-authoritative** (must keep working offline); **puzzle Elo is
-  server-authoritative**, only ever updated inside the `record_attempts` RPC — but the
-  client never reads it back: puzzle difficulty always comes from the bundled
-  `exercises.json`, which is what the periodic `export_puzzles.mjs` refresh is for.
+  update) per 2s debounce window, flushing also on reconnect, tab-hide, and login.
+- **Both user Elo and puzzle Elo are server-authoritative**, computed inside the
+  `record_attempts` RPC from its own running totals (not reordered by client-reported
+  timestamps across devices) — the client only ever sends `{puzzle_id, transform_code,
+solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optimistic
+  local `endgameElo` delta (`userProfile.ts: recordResult`) purely for instant UI
+  feedback, which `applyServerElo()` overwrites once the RPC's response lands. Puzzle
+  difficulty is never read back by the client either way — it always comes from the
+  bundled `exercises.json`, which is what the periodic `export_puzzles.mjs` refresh is
+  for. `record_attempts` also skips a second attempt at the same puzzle anywhere in
+  the current 8-week attempts history (e.g. two devices solving it before either has
+  synced) — no insert, no Elo effect — instead of double-counting it.
 - **Merge policy on login**: cloud profile wins for Elo/settings; any attempts queued
   locally before login are replayed to the server afterward. No conflict prompt — this
   was a flagged-for-review default, not a hard requirement.

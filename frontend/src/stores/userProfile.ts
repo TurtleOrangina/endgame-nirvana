@@ -10,6 +10,7 @@ import type {
 import { detectBrowserLocale } from '@/utils/detectLocale'
 import type { Tables } from '@/types/database'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
+import { RECENT_ATTEMPT_EXCLUSION_MS } from '@/utils/attemptWindow'
 import { useSyncStore } from '@/stores/sync'
 
 const STORAGE_KEY = 'userProfile'
@@ -56,6 +57,16 @@ function persistProfile(profile: UserProfile): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
 }
 
+// The server already trims attempts older than RECENT_ATTEMPT_EXCLUSION_MS (see
+// record_attempts/pull_state), but a purely local, never-synced profile would
+// otherwise grow eloHistory forever in localStorage.
+function pruneOldEloHistory(profile: UserProfile): void {
+  const cutoff = Date.now() - RECENT_ATTEMPT_EXCLUSION_MS
+  profile.eloHistory = profile.eloHistory.filter(
+    (entry) => new Date(entry.timestamp).getTime() >= cutoff,
+  )
+}
+
 export const useUserProfileStore = defineStore('userProfile', () => {
   const profile = ref<UserProfile | null>(null)
   const sessionSolved = ref(0)
@@ -100,13 +111,15 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     const p = profile.value
     if (!p) return
 
+    // Optimistic local estimate for instant UI feedback — record_attempts computes
+    // the authoritative endgameElo server-side and applyServerElo() takes over once
+    // that response lands (see sync.ts's performFlush).
     const puzzlesAttempted = p.puzzlesSolved + p.puzzlesFailed
     const k = Math.max(16, 64 - puzzlesAttempted * 0.5)
     const expected = 1 / (1 + Math.pow(10, (exerciseDifficulty - p.endgameElo) / 400))
     const actual = solved ? 1 : 0
     const delta = Math.round(k * (actual - expected))
 
-    const eloBefore = p.endgameElo
     p.endgameElo += delta
     if (solved) {
       p.puzzlesSolved++
@@ -129,8 +142,8 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       solved,
     }
     p.eloHistory.push(entry)
+    pruneOldEloHistory(p)
     persistProfile(p)
-    useSyncStore().markProfileDirty()
 
     if (exerciseId) {
       useSyncStore().enqueueAttempt({
@@ -138,9 +151,6 @@ export const useUserProfileStore = defineStore('userProfile', () => {
         puzzle_id: exerciseId,
         transform_code: transformCode ?? '',
         solved,
-        user_elo_before: eloBefore,
-        elo_change: delta,
-        new_elo: entry.newElo,
         attempted_at: entry.timestamp,
       })
     }
@@ -194,9 +204,20 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     useSyncStore().markProfileDirty()
   }
 
+  // Takes over the authoritative endgameElo once record_attempts responds (see
+  // sync.ts's performFlush) — eloHistory is left untouched; the next pullRemoteState
+  // (already running periodically on tab focus/reconnect) rebuilds it exactly via
+  // applyRemoteProfile below.
+  function applyServerElo(newElo: number): void {
+    const p = profile.value
+    if (!p) return
+    p.endgameElo = newElo
+    persistProfile(p)
+  }
+
   // Cloud wins for Elo/settings on login (see backend_plan.md's merge policy). Rebuilds
   // eloHistory from the pulled attempts (last 8 weeks — matches RECENT_ATTEMPT_EXCLUSION_MS
-  // in stores/exercises.ts) so recently-attempted/failed-puzzle detection stays correct.
+  // in utils/attemptWindow.ts) so recently-attempted/failed-puzzle detection stays correct.
   function applyRemoteProfile(remote: Tables<'profiles'>, attempts: Tables<'attempts'>[]): void {
     const settings = remote.settings as {
       difficultyPreference?: DifficultyPreference
@@ -251,5 +272,6 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     setLanguage,
     setLichessUsername,
     applyRemoteProfile,
+    applyServerElo,
   }
 })

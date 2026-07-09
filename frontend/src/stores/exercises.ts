@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { applyTransformCode, pickRandomTransformCode } from '@/utils/fenTransform'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
+import { RECENT_ATTEMPT_EXCLUSION_MS } from '@/utils/attemptWindow'
 import type { Tables } from '@/types/database'
 
 interface PuzzleRow {
@@ -72,8 +73,6 @@ export interface CategoryProgressNode {
   hidden: number
   children: CategoryProgressNode[]
 }
-
-const RECENT_ATTEMPT_EXCLUSION_MS = 8 * 7 * 24 * 60 * 60 * 1000
 
 // The +/- elo range used by the 'around' difficulty preference, and the floor/ceiling offset
 // for 'aroundAndAbove' / 'aroundAndBelow'. Also the band used by puzzleDifficultyColor.ts to
