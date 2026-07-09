@@ -1265,6 +1265,7 @@ body {
   max-width: none;
   flex-direction: row;
   align-items: flex-start;
+  justify-content: center;
   gap: 2rem;
 }
 

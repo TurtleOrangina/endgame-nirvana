@@ -94,34 +94,43 @@ function onPuzzleClick(exercise: Exercise): void {
             @click="onPuzzleClick(exercise)"
           >
             <MiniBoard :fen="exercise.fen" />
-            <span :class="['elo-badge', eloBandClass(exercise)]">{{ exercise.difficulty }}</span>
-            <svg
-              v-if="attemptStatus(exercise) === 'solved'"
-              class="attempt-badge solved"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <svg
-              v-else-if="attemptStatus(exercise) === 'failed'"
-              class="attempt-badge failed"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
+            <div class="puzzle-meta">
+              <span :class="['meta-chip', eloBandClass(exercise)]">{{ exercise.difficulty }}</span>
+              <span :class="['meta-chip', exercise.expectedResult]">
+                {{
+                  exercise.expectedResult === 'win'
+                    ? t((s) => s.app.resultWin)
+                    : t((s) => s.app.resultDraw)
+                }}
+              </span>
+              <svg
+                v-if="attemptStatus(exercise) === 'solved'"
+                class="attempt-icon solved"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <svg
+                v-else-if="attemptStatus(exercise) === 'failed'"
+                class="attempt-icon failed"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </div>
           </div>
         </div>
       </template>
@@ -199,10 +208,11 @@ function onPuzzleClick(exercise: Exercise): void {
 }
 
 .puzzle-card {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
   cursor: pointer;
   border-radius: 4px;
-  overflow: hidden;
   border: 1px solid var(--border);
   transition: border-color 0.15s;
 }
@@ -211,50 +221,61 @@ function onPuzzleClick(exercise: Exercise): void {
   border-color: var(--accent);
 }
 
-.elo-badge {
-  position: absolute;
-  z-index: 1;
-  top: 0.2rem;
-  right: 0.2rem;
+.puzzle-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0 0.2rem 0.3rem;
+}
+
+.meta-chip {
   padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.65);
   font-size: 0.75rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  pointer-events: none;
 }
 
-.elo-badge.harder {
-  color: var(--color-failed-on-dark-chip);
+.meta-chip.harder {
+  border-color: var(--color-failed);
+  color: var(--color-failed);
 }
 
-.elo-badge.match {
-  color: var(--color-warning-fg-on-dark-chip);
+.meta-chip.match {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-fg);
 }
 
-.elo-badge.easier {
-  color: var(--color-solved-on-dark-chip);
+.meta-chip.easier {
+  border-color: var(--color-solved);
+  color: var(--color-solved);
 }
 
-.attempt-badge {
-  position: absolute;
-  z-index: 1;
-  bottom: 0.4rem;
-  right: 0.4rem;
+.meta-chip.win {
+  border-color: var(--tag-win-border);
+  color: var(--tag-win-fg);
+}
+
+.meta-chip.draw {
+  border-color: var(--tag-draw-border);
+  color: var(--tag-draw-fg);
+}
+
+.attempt-icon {
   width: 15px;
   height: 15px;
   padding: 0.1rem;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.65);
-  pointer-events: none;
 }
 
-.attempt-badge.solved {
+.attempt-icon.solved {
   color: var(--color-solved);
 }
 
-.attempt-badge.failed {
+.attempt-icon.failed {
   color: var(--color-failed);
 }
 </style>

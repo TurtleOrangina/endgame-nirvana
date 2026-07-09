@@ -48,6 +48,7 @@ interface HistoryCard {
   entry: EloHistoryEntry
   displayFen: string | null
   puzzleElo: number | null
+  expectedResult: string | null
 }
 
 // Pre-migration entries have no exerciseId (fen was stored directly back then) —
@@ -67,6 +68,7 @@ const recentHistory = computed((): HistoryCard[] => {
           ? applyTransformCode(entry.exerciseId, entry.transformCode ?? '')
           : null,
         puzzleElo: exercise ? parseInt(exercise.difficulty) : null,
+        expectedResult: exercise?.expectedResult ?? null,
       }
     })
 })
@@ -140,15 +142,26 @@ function onCardClick(entry: EloHistoryEntry): void {
           <div class="board-wrap">
             <MiniBoard v-if="card.displayFen" :fen="card.displayFen" />
             <div v-else class="board-placeholder">?</div>
+          </div>
+          <div class="card-meta">
             <span
               v-if="card.puzzleElo !== null"
-              :class="['puzzle-elo-badge', eloBandClass(card.puzzleElo)]"
+              :class="['meta-chip', eloBandClass(card.puzzleElo)]"
             >
               {{ card.puzzleElo }}
             </span>
-          </div>
-          <div :class="['elo-badge', card.entry.change >= 0 ? 'positive' : 'negative']">
-            {{ eloChangeLabel(card.entry.change) }}
+            <span v-if="card.expectedResult" :class="['meta-chip', card.expectedResult]">
+              {{
+                card.expectedResult === 'win'
+                  ? t((s) => s.app.resultWin)
+                  : t((s) => s.app.resultDraw)
+              }}
+            </span>
+            <span
+              :class="['meta-chip elo-change', card.entry.change >= 0 ? 'positive' : 'negative']"
+            >
+              {{ eloChangeLabel(card.entry.change) }}
+            </span>
           </div>
         </div>
       </div>
@@ -254,36 +267,61 @@ function onCardClick(entry: EloHistoryEntry): void {
 }
 
 .board-wrap {
-  position: relative;
   width: 100%;
   border-radius: 2px;
   overflow: hidden;
 }
 
-.puzzle-elo-badge {
-  position: absolute;
-  z-index: 1;
-  top: 0.2rem;
-  right: 0.2rem;
+.card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.meta-chip {
   padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.65);
   font-size: 0.75rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  pointer-events: none;
 }
 
-.puzzle-elo-badge.harder {
-  color: var(--color-failed-on-dark-chip);
+.meta-chip.harder {
+  border-color: var(--color-failed);
+  color: var(--color-failed);
 }
 
-.puzzle-elo-badge.match {
-  color: var(--color-warning-fg-on-dark-chip);
+.meta-chip.match {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-fg);
 }
 
-.puzzle-elo-badge.easier {
-  color: var(--color-solved-on-dark-chip);
+.meta-chip.easier {
+  border-color: var(--color-solved);
+  color: var(--color-solved);
+}
+
+.meta-chip.win {
+  border-color: var(--tag-win-border);
+  color: var(--tag-win-fg);
+}
+
+.meta-chip.draw {
+  border-color: var(--tag-draw-border);
+  color: var(--tag-draw-fg);
+}
+
+.meta-chip.elo-change.positive {
+  border-color: var(--color-solved);
+  color: var(--color-solved);
+}
+
+.meta-chip.elo-change.negative {
+  border-color: var(--color-failed);
+  color: var(--color-failed);
 }
 
 .board-placeholder {
@@ -296,19 +334,5 @@ function onCardClick(entry: EloHistoryEntry): void {
   color: var(--muted);
   font-size: 1.5rem;
   border-radius: 2px;
-}
-
-.elo-badge {
-  font-size: 0.8rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.elo-badge.positive {
-  color: var(--color-solved);
-}
-
-.elo-badge.negative {
-  color: var(--color-failed);
 }
 </style>
