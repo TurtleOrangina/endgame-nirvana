@@ -8,6 +8,13 @@ import { useLocale } from '@/composables/useLocale'
 const props = defineProps<{
   nodes: CategoryProgressNode[]
   overall?: SolveProgress
+  // When true, every row (including "Total") is clickable and emits `select` with its
+  // category value instead of the default expand/collapse-on-click behavior.
+  navigable?: boolean
+}>()
+
+const emit = defineEmits<{
+  select: [value: string | null]
 }>()
 
 const { t } = useLocale()
@@ -29,6 +36,18 @@ function toggle(node: CategoryProgressNode): void {
   toggledValues.value = next
 }
 
+function onRowClick(node: CategoryProgressNode): void {
+  if (props.navigable) {
+    emit('select', node.value)
+  } else if (node.children.length > 0) {
+    toggle(node)
+  }
+}
+
+function onOverallClick(): void {
+  if (props.navigable) emit('select', null)
+}
+
 // Flattens the tree into the currently visible rows (depth-first, respecting collapsed nodes)
 // so every row — regardless of depth — is a direct sibling in the same CSS grid.
 const visibleRows = computed((): CategoryProgressNode[] => {
@@ -48,7 +67,11 @@ const visibleRows = computed((): CategoryProgressNode[] => {
 
 <template>
   <div class="category-tree">
-    <div v-if="overall" class="category-tree-row overall-row">
+    <div
+      v-if="overall"
+      :class="['category-tree-row', 'overall-row', { clickable: navigable }]"
+      @click="onOverallClick"
+    >
       <span class="node-label">{{ t((s) => s.profile.totalProgress) }}</span>
       <CategoryProgressBar
         :solved="overall.solved"
@@ -68,8 +91,8 @@ const visibleRows = computed((): CategoryProgressNode[] => {
     <div
       v-for="node in visibleRows"
       :key="node.value"
-      :class="['category-tree-row', { clickable: node.children.length > 0 }]"
-      @click="node.children.length > 0 && toggle(node)"
+      :class="['category-tree-row', { clickable: navigable || node.children.length > 0 }]"
+      @click="onRowClick(node)"
     >
       <span class="node-label" :style="{ paddingLeft: `${node.depth * 1.2}rem` }">{{
         node.label

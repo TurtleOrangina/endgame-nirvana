@@ -23,7 +23,10 @@ import SetupModal from '@/components/SetupModal.vue'
 import AnalysisPanel from '@/components/AnalysisPanel.vue'
 import BoardNavControls from '@/components/BoardNavControls.vue'
 import CategorySolveCount from '@/components/CategorySolveCount.vue'
-import UserProfilePage from '@/components/UserProfilePage.vue'
+import AppHeader from '@/components/AppHeader.vue'
+import SolveProgressPage from '@/components/SolveProgressPage.vue'
+import BrowseExercisesPage from '@/components/BrowseExercisesPage.vue'
+import SettingsPage from '@/components/SettingsPage.vue'
 import PasswordRecoveryModal from '@/components/PasswordRecoveryModal.vue'
 import {
   PuzzleStatus,
@@ -95,11 +98,13 @@ const { t, setLocale } = useLocale()
 
 const boardRef = ref<InstanceType<typeof ChessBoard> | null>(null)
 const dropdownRef = ref<HTMLDetailsElement | null>(null)
-const currentView = ref<'training' | 'profile' | 'impressum' | 'datenschutz'>('training')
+type MainView = 'training' | 'solveProgress' | 'browseExercises' | 'settings'
+const currentView = ref<MainView | 'impressum' | 'datenschutz'>('training')
+const browseInitialCategory = ref<string | null>(null)
 
-// Keeps the screen awake while a board view is on screen, since puzzles can
-// take a while to think through with no touch/scroll to reset the OS's dim timer.
-useWakeLock(computed(() => currentView.value !== 'profile'))
+// Keeps the screen awake while actually solving a puzzle, since puzzles can take a
+// while to think through with no touch/scroll to reset the OS's dim timer.
+useWakeLock(computed(() => currentView.value === 'training'))
 const puzzleStatus = ref<PuzzleStatus>(PuzzleStatus.SOLVING)
 const isWrongSolution = ref(false)
 const isAnalysisMode = ref(false)
@@ -176,8 +181,29 @@ onMounted(async () => {
   if (params.has('code')) {
     suppressUrlUpdate = true
     await lichessAuth.handleRedirectCallback()
-    await store.load()
-    history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
+    // The OAuth redirect_uri deliberately omits the original query string (see
+    // useLichessAuth's startLinkFlow), so any puzzle fen is already gone by this point —
+    // only the pathname (which view to return to) survives the round trip to Lichess.
+    const redirectRoute = parseCurrentRoute()
+    if (
+      redirectRoute.view === 'solveProgress' ||
+      redirectRoute.view === 'browseExercises' ||
+      redirectRoute.view === 'settings'
+    ) {
+      await store.load()
+      if (redirectRoute.view === 'browseExercises') {
+        browseInitialCategory.value = redirectRoute.category
+      }
+      currentView.value = redirectRoute.view
+      history.replaceState(
+        null,
+        '',
+        buildRouteUrl(redirectRoute.view, undefined, redirectRoute.category),
+      )
+    } else {
+      await store.load()
+      history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
+    }
     suppressUrlUpdate = false
     window.addEventListener('popstate', handlePopState)
     return
@@ -186,10 +212,15 @@ onMounted(async () => {
   const route = parseCurrentRoute()
   suppressUrlUpdate = true
 
-  if (route.view === 'profile') {
+  if (
+    route.view === 'solveProgress' ||
+    route.view === 'browseExercises' ||
+    route.view === 'settings'
+  ) {
     await store.load()
-    currentView.value = 'profile'
-    history.replaceState(null, '', '/profile')
+    if (route.view === 'browseExercises') browseInitialCategory.value = route.category
+    currentView.value = route.view
+    history.replaceState(null, '', buildRouteUrl(route.view, undefined, route.category))
   } else {
     await store.load(route.fen ?? undefined)
     const exercise = currentExercise.value
@@ -267,8 +298,13 @@ function handlePopState(): void {
   suppressUrlUpdate = true
   const route = parseCurrentRoute()
 
-  if (route.view === 'profile') {
-    currentView.value = 'profile'
+  if (
+    route.view === 'solveProgress' ||
+    route.view === 'browseExercises' ||
+    route.view === 'settings'
+  ) {
+    if (route.view === 'browseExercises') browseInitialCategory.value = route.category
+    currentView.value = route.view
     suppressUrlUpdate = false
     return
   }
@@ -327,6 +363,31 @@ const boardTitle = computed(() => {
     return turn === 'w' ? t((s) => s.app.youPlayWhite) : t((s) => s.app.youPlayBlack)
   }
   return 'Endgame Nirvana'
+})
+
+// AppHeader is only ever rendered outside the impressum/datenschutz branch (see template),
+// but Vue's template compiler can't narrow currentView's type across that sibling v-if/v-else,
+// so this computed does it explicitly for the :active-view prop.
+const headerActiveView = computed(
+  (): MainView =>
+    currentView.value === 'impressum' || currentView.value === 'datenschutz'
+      ? 'training'
+      : currentView.value,
+)
+
+const pageTitle = computed(() => {
+  switch (currentView.value) {
+    case 'training':
+      return boardTitle.value
+    case 'solveProgress':
+      return t((s) => s.profile.solveProgress)
+    case 'browseExercises':
+      return t((s) => s.profile.browseExercises)
+    case 'settings':
+      return t((s) => s.profile.settingsTitle)
+    default:
+      return 'Endgame Nirvana'
+  }
 })
 
 const eloChangeLabel = computed(() => {
@@ -606,18 +667,27 @@ function navigateToTraining(): void {
   currentView.value = 'training'
 }
 
-// Navigating to the profile page unmounts ChessBoard entirely (see the v-else-if chain
+// Navigating away from training unmounts ChessBoard entirely (see the v-else-if chain
 // in the template), which resets its own analysis state on remount — but App's isAnalysisMode
 // and analysis panel state must be reset here too, or returning to training would show the
 // analysis sidebar over a freshly non-analysis board.
-function navigateToProfile(): void {
+function navigateToView(view: MainView, category: string | null = null): void {
+  if (view === 'training') {
+    navigateToTraining()
+    return
+  }
   isAnalysisMode.value = false
   analysisPaused.value = false
   analysisLines.value = []
   analysisTablebase.value = null
   analysisFen.value = ''
-  history.pushState(null, '', '/profile')
-  currentView.value = 'profile'
+  if (view === 'browseExercises') browseInitialCategory.value = category
+  history.pushState(null, '', buildRouteUrl(view, undefined, category))
+  currentView.value = view
+}
+
+function handleBrowseCategory(category: string | null): void {
+  navigateToView('browseExercises', category)
 }
 
 function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }): void {
@@ -640,44 +710,31 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
       :page="currentView"
     />
 
-    <UserProfilePage
-      v-else-if="currentView === 'profile'"
-      @back="navigateToTraining()"
-      @load-puzzle="handleLoadPuzzle"
-    />
+    <div v-else class="page">
+      <AppHeader
+        :title="pageTitle"
+        :active-view="headerActiveView"
+        :username="profile?.username ?? null"
+        @navigate="navigateToView"
+      />
 
-    <div v-else-if="isLoading" class="loading">{{ t((s) => s.app.loadingExercises) }}</div>
+      <SolveProgressPage
+        v-if="currentView === 'solveProgress'"
+        @browse-category="handleBrowseCategory"
+        @load-puzzle="handleLoadPuzzle"
+      />
 
-    <template v-else>
-      <div class="page">
-        <div class="app-header">
-          <div class="header-left">
-            <span class="board-title">{{ boardTitle }}</span>
-          </div>
+      <BrowseExercisesPage
+        v-else-if="currentView === 'browseExercises'"
+        :initial-category="browseInitialCategory"
+        @load-puzzle="handleLoadPuzzle"
+      />
 
-          <button
-            v-if="profile"
-            class="btn-profile-nav"
-            :title="t((s) => s.app.profileButtonTitle, { username: profile.username })"
-            @click="navigateToProfile()"
-          >
-            {{ profile.username }}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <circle cx="12" cy="10" r="3" />
-              <path d="M6.168 18.849A4 4 0 0 1 10 16h4a4 4 0 0 1 3.834 2.855" />
-            </svg>
-          </button>
-        </div>
+      <SettingsPage v-else-if="currentView === 'settings'" />
 
+      <div v-else-if="isLoading" class="loading">{{ t((s) => s.app.loadingExercises) }}</div>
+
+      <template v-else>
         <div class="layout two-col">
           <section class="board-area">
             <ChessBoard
@@ -1093,8 +1150,8 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
             </template>
           </div>
         </div>
-      </div>
-    </template>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -1106,10 +1163,10 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
 }
 
 :root {
-  --bg: #1a1a2e;
-  --fg: #e0e0e0;
-  --surface: #16213e;
-  --border: #333344;
+  --bg: #1e1e2e;
+  --fg: #d6d6d6;
+  --surface: #242c46;
+  --border: #3a3a4d;
   --muted: #aaaaaa;
   --hover-bg: #0f3460;
   --badge-bg: #333344;
@@ -1131,13 +1188,20 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
   --color-warning-border: #b8860b;
   --color-warning-fg: #e0b04c;
   --color-warning-bg: rgba(184, 134, 11, 0.12);
+
+  /* Fixed (non-theme-switching) variants for text drawn on the always-dark
+     difficulty chip background — the themed vars above are muted in light
+     mode for use on light surfaces, which is illegible there. */
+  --color-solved-on-dark-chip: #74c69d;
+  --color-failed-on-dark-chip: #e06070;
+  --color-warning-fg-on-dark-chip: #e0b04c;
 }
 
 :root[data-theme='light'] {
-  --bg: #f4f4f8;
-  --fg: #1a1a2e;
-  --surface: #ffffff;
-  --border: #d0d0d8;
+  --bg: #e3e3e9;
+  --fg: #35354a;
+  --surface: #eeeef2;
+  --border: #c6c6d0;
   --muted: #666666;
   --hover-bg: #e8e8f2;
   --badge-bg: #e0e0ea;
@@ -1211,23 +1275,6 @@ body {
   gap: 0.75rem;
 }
 
-.app-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-}
-
-.header-left {
-  flex: 0 0 auto;
-  width: min(calc(100vw - 320px - 4rem), calc(100vh - 7rem));
-  min-width: 260px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
 .board-area {
   flex: 0 0 auto;
   width: min(calc(100vw - 320px - 4rem), calc(100vh - 7rem));
@@ -1235,13 +1282,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-}
-
-.board-title {
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: var(--accent);
 }
 
 .empty-board {
@@ -1287,44 +1327,6 @@ body {
     width: 100%;
     flex: none;
   }
-
-  /* The board goes full-width below, but the header stays a single row, so the
-     move bubbles can no longer line up with the board's right edge here. */
-  .header-left {
-    width: auto;
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-}
-
-.btn-profile-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-left: auto;
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--fg);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition:
-    background 0.1s,
-    border-color 0.1s,
-    color 0.1s;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.btn-profile-nav svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.btn-profile-nav:hover {
-  background: var(--hover-bg);
 }
 
 .loading {

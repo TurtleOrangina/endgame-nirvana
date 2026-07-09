@@ -1,4 +1,4 @@
-export type AppView = 'training' | 'analysis' | 'profile'
+export type AppView = 'training' | 'analysis' | 'solveProgress' | 'browseExercises' | 'settings'
 
 export type LegalPage = 'impressum' | 'datenschutz'
 
@@ -10,19 +10,35 @@ export function matchLegalRoute(pathname: string): LegalPage | null {
   return null
 }
 
-export function parseCurrentRoute(): { view: AppView; fen: string | null } {
+export function parseCurrentRoute(): {
+  view: AppView
+  fen: string | null
+  category: string | null
+} {
   const path = window.location.pathname
   const params = new URLSearchParams(window.location.search)
   const fen = params.get('puzzle')
 
-  if (path === '/profile') return { view: 'profile', fen: null }
-  if (path === '/analysis') return { view: 'analysis', fen }
-  return { view: 'training', fen }
+  if (path === '/progress') return { view: 'solveProgress', fen: null, category: null }
+  if (path === '/browse') {
+    return { view: 'browseExercises', fen: null, category: params.get('category') }
+  }
+  if (path === '/settings') return { view: 'settings', fen: null, category: null }
+  if (path === '/analysis') return { view: 'analysis', fen, category: null }
+  return { view: 'training', fen, category: null }
 }
 
 // rawFen uses underscores for spaces and unencoded slashes, e.g. 8/5K2/8_w_-_-_0_1
-export function buildRouteUrl(view: AppView, rawFen?: string | null): string {
-  if (view === 'profile') return '/profile'
+export function buildRouteUrl(
+  view: AppView,
+  rawFen?: string | null,
+  category?: string | null,
+): string {
+  if (view === 'solveProgress') return '/progress'
+  if (view === 'settings') return '/settings'
+  if (view === 'browseExercises') {
+    return category ? `/browse?category=${encodeURIComponent(category)}` : '/browse'
+  }
   const base = view === 'analysis' ? '/analysis' : '/train'
   if (rawFen) return `${base}?puzzle=${rawFen}`
   return base

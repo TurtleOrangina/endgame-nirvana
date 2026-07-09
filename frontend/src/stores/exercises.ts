@@ -76,8 +76,9 @@ export interface CategoryProgressNode {
 const RECENT_ATTEMPT_EXCLUSION_MS = 8 * 7 * 24 * 60 * 60 * 1000
 
 // The +/- elo range used by the 'around' difficulty preference, and the floor/ceiling offset
-// for 'aroundAndAbove' / 'aroundAndBelow'.
-const ELO_BAND = 200
+// for 'aroundAndAbove' / 'aroundAndBelow'. Also the band used by puzzleDifficultyColor.ts to
+// color-code puzzles in the Browse Exercises page relative to the user's elo.
+export const ELO_BAND = 200
 
 // Minimum number of puzzles the 'around' preference tries to guarantee on each side of the
 // user's elo, so a sparse region of the puzzle distribution doesn't leave them with nothing.
@@ -161,6 +162,56 @@ function buildExercises(puzzles: PuzzleRow[]): Exercise[] {
 // exercises.json catalog, refreshed periodically via backend/scripts/export_puzzles.mjs.
 function eloOf(exercise: Exercise): number {
   return parseInt(exercise.difficulty)
+}
+
+interface CategoryTreeNode {
+  label: string
+  value: string
+  attempted: number
+  total: number
+  children: Map<string, CategoryTreeNode>
+}
+
+// Groups exercises into a category tree by their categoryPath segments. `isAttempted`
+// decides whether a given exercise counts toward a node's `attempted` count.
+function buildCategoryTreeNodes(
+  exercises: Exercise[],
+  isAttempted: (exerciseId: string) => boolean,
+): Map<string, CategoryTreeNode> {
+  const roots = new Map<string, CategoryTreeNode>()
+  for (const ex of exercises) {
+    let siblings = roots
+    let prefix = ''
+    const attempted = isAttempted(ex.id)
+    for (const segment of ex.categoryPath) {
+      prefix = prefix ? `${prefix}/${segment}` : segment
+      let node = siblings.get(segment)
+      if (!node) {
+        node = { label: segment, value: prefix, attempted: 0, total: 0, children: new Map() }
+        siblings.set(segment, node)
+      }
+      node.total++
+      if (attempted) node.attempted++
+      siblings = node.children
+    }
+  }
+  return roots
+}
+
+// Flattens a category tree depth-first. Top-level categories are sorted alphabetically;
+// deeper levels preserve the curriculum order from exercises.json.
+function flattenCategoryTree(
+  nodes: Map<string, CategoryTreeNode>,
+  depth: number,
+): CategoryOption[] {
+  const ordered =
+    depth === 0
+      ? [...nodes.values()].sort((a, b) => a.label.localeCompare(b.label))
+      : [...nodes.values()]
+  return ordered.flatMap((node) => [
+    { label: node.label, value: node.value, depth, attempted: node.attempted, total: node.total },
+    ...flattenCategoryTree(node.children, depth + 1),
+  ])
 }
 
 function filterByCategory(exercises: Exercise[], prefix: string | null): Exercise[] {
@@ -356,55 +407,33 @@ export const useExercisesStore = defineStore('exercises', () => {
 
   // Builds the category tree from exercise paths, then flattens it depth-first for the
   // dropdown. Top-level categories are sorted alphabetically (matching prior behaviour);
-  // deeper levels preserve the curriculum order from exercises.json. Categories without
-  // a single puzzle counting toward progress are omitted.
-  const categoryOptions = computed((): CategoryOption[] => {
-    interface TreeNode {
-      label: string
-      value: string
-      attempted: number
-      total: number
-      children: Map<string, TreeNode>
-    }
+  // deeper levels preserve the curriculum order from exercises.json. Shared by
+  // categoryOptions (progress-filtered pool) and catalogCategoryOptions (entire catalog).
+  const categoryOptions = computed((): CategoryOption[] =>
+    flattenCategoryTree(
+      buildCategoryTreeNodes(
+        allExercises.value.filter((ex) => countsTowardProgress(ex.id)),
+        (id) => solveStatusOf(id) !== null,
+      ),
+      0,
+    ),
+  )
 
-    const roots = new Map<string, TreeNode>()
-    for (const ex of allExercises.value) {
-      if (!countsTowardProgress(ex.id)) continue
-      let siblings = roots
-      let prefix = ''
-      const attempted = solveStatusOf(ex.id) !== null
-      for (const segment of ex.categoryPath) {
-        prefix = prefix ? `${prefix}/${segment}` : segment
-        let node = siblings.get(segment)
-        if (!node) {
-          node = { label: segment, value: prefix, attempted: 0, total: 0, children: new Map() }
-          siblings.set(segment, node)
-        }
-        node.total++
-        if (attempted) node.attempted++
-        siblings = node.children
-      }
-    }
+  // Same shape as categoryOptions, but over the entire catalog regardless of difficulty
+  // preference or attempt history — the full category list for the Browse Exercises page.
+  // `attempted` is always 0 here (unused by that page).
+  const catalogCategoryOptions = computed((): CategoryOption[] =>
+    flattenCategoryTree(
+      buildCategoryTreeNodes(allExercises.value, () => false),
+      0,
+    ),
+  )
 
-    function flatten(nodes: Map<string, TreeNode>, depth: number): CategoryOption[] {
-      const ordered =
-        depth === 0
-          ? [...nodes.values()].sort((a, b) => a.label.localeCompare(b.label))
-          : [...nodes.values()]
-      return ordered.flatMap((node) => [
-        {
-          label: node.label,
-          value: node.value,
-          depth,
-          attempted: node.attempted,
-          total: node.total,
-        },
-        ...flatten(node.children, depth + 1),
-      ])
-    }
-
-    return flatten(roots, 0)
-  })
+  // Exercises in `value`'s category (including descendants), across the entire catalog
+  // regardless of difficulty preference, sorted easy-to-hard. Used by Browse Exercises.
+  function puzzlesInCategory(value: string): Exercise[] {
+    return [...filterByCategory(allExercises.value, value)].sort((a, b) => eloOf(a) - eloOf(b))
+  }
 
   // Exercises in the selected category after the difficulty filter, uncapped — the denominator
   // for solve progress.
@@ -683,11 +712,46 @@ export const useExercisesStore = defineStore('exercises', () => {
     return false
   }
 
+  // The exercise's most recent attempt outcome within the same recent-attempt window as
+  // hasSolvedRecently/recentlyAttemptedIds — the "last 8 weeks" of puzzle history shown
+  // elsewhere in the app (e.g. Puzzle History). Used by Browse Exercises to mark puzzles
+  // as solved/failed.
+  function recentAttemptStatus(exerciseId: string): 'solved' | 'failed' | null {
+    const history = useUserProfileStore().profile?.eloHistory ?? []
+    const cutoff = Date.now() - RECENT_ATTEMPT_EXCLUSION_MS
+    for (let i = history.length - 1; i >= 0; i--) {
+      const entry = history[i]
+      if (!entry) break
+      if (new Date(entry.timestamp).getTime() < cutoff) break
+      if (entry.exerciseId === exerciseId) return entry.solved ? 'solved' : 'failed'
+    }
+    return null
+  }
+
+  function exerciseById(id: string): Exercise | undefined {
+    return allExercises.value.find((ex) => ex.id === id)
+  }
+
+  // A puzzle id (its own history, a shared link, ...) that no longer resolves against the
+  // current catalog — e.g. it was fixed/pruned by a later exercises.json export (see
+  // backend/scripts/seed_puzzles.mjs). Clears whatever was previously selected and flips
+  // requestedPuzzleNotFound rather than leaving the prior puzzle's stale state in place,
+  // which would otherwise look like the new puzzle silently loaded in the wrong state.
+  function selectNotFound(): void {
+    requestedPuzzleNotFound.value = true
+    currentExerciseId.value = null
+    currentTransformedFen.value = null
+    initialPieceCount.value = null
+  }
+
   // Selects an exercise by id (its original fen) and rolls a fresh random
   // transformation for it. Returns false if no such exercise exists.
   function selectById(id: string): boolean {
     const exercise = allExercises.value.find((ex) => ex.id === id)
-    if (!exercise) return false
+    if (!exercise) {
+      selectNotFound()
+      return false
+    }
     requestedPuzzleNotFound.value = false
     const code = pickRandomTransformCode(exercise.fen)
     currentTransformCode.value = code
@@ -702,7 +766,10 @@ export const useExercisesStore = defineStore('exercises', () => {
   // appeared in the user's history. Returns false if no such exercise exists.
   function selectByIdWithTransform(id: string, code: string): boolean {
     const exercise = allExercises.value.find((ex) => ex.id === id)
-    if (!exercise) return false
+    if (!exercise) {
+      selectNotFound()
+      return false
+    }
     requestedPuzzleNotFound.value = false
     currentTransformCode.value = code
     currentTransformedFen.value = applyTransformCode(exercise.fen, code)
@@ -749,6 +816,8 @@ export const useExercisesStore = defineStore('exercises', () => {
   return {
     isLoading,
     categoryOptions,
+    catalogCategoryOptions,
+    puzzlesInCategory,
     categoryExercises,
     filteredExercises,
     currentExercise,
@@ -769,6 +838,8 @@ export const useExercisesStore = defineStore('exercises', () => {
     recordSolved,
     recordFailed,
     hasSolvedRecently,
+    recentAttemptStatus,
+    exerciseById,
     selectById,
     selectByIdWithTransform,
     advanceToNext,

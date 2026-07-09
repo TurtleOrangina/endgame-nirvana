@@ -11,6 +11,15 @@ const OUTBOX_STORAGE_KEY = 'syncOutbox'
 const PROFILE_DIRTY_STORAGE_KEY = 'syncProfileDirty'
 const FLUSH_DEBOUNCE_MS = 30_000
 
+// Postgres error code for a foreign key violation.
+const FOREIGN_KEY_VIOLATION = '23503'
+
+// Pulls the offending value out of a Postgres FK violation's detail message, e.g.
+// `Key (puzzle_id)=(8/3b4/8/8/p7/k7/2K5/8 w - - 20 1) is not present in table "puzzles".`
+function extractMissingPuzzleId(details: string | null): string | null {
+  return details?.match(/Key \(puzzle_id\)=\((.+)\) is not present in table/)?.[1] ?? null
+}
+
 // Puzzle difficulty now comes solely from the bundled exercises.json; drop the
 // server-Elo override map older app versions persisted.
 localStorage.removeItem('puzzleEloOverrides')
@@ -103,10 +112,39 @@ export const useSyncStore = defineStore('sync', () => {
       if (!session) return
 
       if (outbox.value.length > 0) {
-        const { error } = await supabase.rpc('record_attempts', {
-          p_attempts: outbox.value as unknown as Json,
-        })
-        if (error) throw error
+        // record_attempts runs the whole batch inside one implicit transaction (it's a
+        // plain plpgsql loop with no per-row exception handling), so a single attempt
+        // whose puzzle_id no longer exists server-side — e.g. pruned by a later
+        // exercises.json export, see backend/scripts/seed_puzzles.mjs — aborts the
+        // entire call and rolls back every attempt in it. Left alone, that one
+        // unrecoverable attempt would sit in the outbox forever and wedge every other
+        // (valid) attempt behind it too, since a normal failure never clears the
+        // outbox. Drop the specific offending attempt — identified from the FK
+        // violation's error detail — and retry with what's left, bounded so a
+        // genuinely broken RPC can't loop forever.
+        let synced = false
+        for (let i = 0; i <= outbox.value.length; i++) {
+          const { error } = await supabase.rpc('record_attempts', {
+            p_attempts: outbox.value as unknown as Json,
+          })
+          if (!error) {
+            synced = true
+            break
+          }
+          const badPuzzleId =
+            error.code === FOREIGN_KEY_VIOLATION ? extractMissingPuzzleId(error.details) : null
+          if (!badPuzzleId) throw error
+          const countBefore = outbox.value.length
+          outbox.value = outbox.value.filter((a) => a.puzzle_id !== badPuzzleId)
+          persistOutbox(outbox.value)
+          if (outbox.value.length === countBefore) throw error
+          if (outbox.value.length === 0) {
+            synced = true
+            break
+          }
+        }
+        if (!synced)
+          throw new Error('record_attempts kept failing after removing invalid puzzle ids')
         outbox.value = []
         persistOutbox([])
       }

@@ -8,22 +8,13 @@ import { useSyncStore } from '@/stores/sync'
 import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
 import { isValidEmail } from '@/utils/email'
-import { applyTransformCode } from '@/utils/fenTransform'
-import MiniBoard from '@/components/MiniBoard.vue'
-import CategoryProgressTree from '@/components/CategoryProgressTree.vue'
 import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
-import type { DifficultyPreference, EloHistoryEntry, Language, ThemeMode } from '@/types'
-
-const emit = defineEmits<{
-  back: []
-  'load-puzzle': [payload: { exerciseId: string; transformCode: string }]
-}>()
+import type { DifficultyPreference, Language, ThemeMode } from '@/types'
 
 const userProfileStore = useUserProfileStore()
 const { profile } = storeToRefs(userProfileStore)
 const exercisesStore = useExercisesStore()
-const { categoryProgressTree, difficultyPuzzleCounts, overallProgress } =
-  storeToRefs(exercisesStore)
+const { difficultyPuzzleCounts } = storeToRefs(exercisesStore)
 const authStore = useAuthStore()
 const syncStore = useSyncStore()
 const lichessAuth = useLichessAuth()
@@ -177,59 +168,13 @@ const inactivePuzzlesDetail = computed((): string | null => {
   return parts.length > 0 ? parts.join(', ') : null
 })
 
-interface HistoryCard {
-  entry: EloHistoryEntry
-  displayFen: string | null
-}
-
-// Pre-migration entries have no exerciseId (fen was stored directly back then) —
-// they simply show the placeholder, same as any other entry with no reconstructable
-// position. eloHistory/attempts are already capped to an 8-week rolling window, so
-// this only ever applies to a short transition period.
-const recentHistory = computed((): HistoryCard[] => {
-  const history = profile.value?.eloHistory ?? []
-  return [...history]
-    .reverse()
-    .slice(0, 16)
-    .map((entry) => ({
-      entry,
-      displayFen: entry.exerciseId
-        ? applyTransformCode(entry.exerciseId, entry.transformCode ?? '')
-        : null,
-    }))
-})
-
-function eloChangeLabel(change: number): string {
-  return change >= 0 ? `+${change}` : `${change}`
-}
-
-function onCardClick(entry: EloHistoryEntry): void {
-  if (entry.exerciseId) {
-    emit('load-puzzle', { exerciseId: entry.exerciseId, transformCode: entry.transformCode ?? '' })
-  }
-}
+const deleteAccountLabel = computed(() =>
+  authStore.isSignedIn ? t((s) => s.profile.deleteAccount) : t((s) => s.profile.deleteProgress),
+)
 </script>
 
 <template>
-  <div class="profile-page">
-    <button class="btn-back" @click="emit('back')">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M19 12H5" />
-        <path d="m12 5-7 7 7 7" />
-      </svg>
-      {{ t((s) => s.profile.backToTraining) }}
-    </button>
-
-    <h1 v-if="profile" class="profile-title">{{ profile.username }}</h1>
-
+  <div class="settings-page">
     <section v-if="authStore.isBackendConfigured && !authStore.isSignedIn" class="section">
       <template v-if="authStore.awaitingEmailConfirmation">
         <p class="local-only-notice">
@@ -313,138 +258,113 @@ function onCardClick(entry: EloHistoryEntry): void {
     </section>
 
     <section class="section">
-      <div class="section-header">
-        <h2 class="section-title">{{ t((s) => s.profile.solveProgress) }}</h2>
-        <span v-if="profile" class="current-elo">
-          {{ t((s) => s.profile.currentElo, { elo: profile.endgameElo }) }}
-        </span>
-      </div>
-      <p v-if="categoryProgressTree.length === 0" class="empty">
-        {{ t((s) => s.profile.noExercisesAttempted) }}
-      </p>
-      <CategoryProgressTree v-else :nodes="categoryProgressTree" :overall="overallProgress" />
-    </section>
-
-    <section class="section">
-      <h2 class="section-title">{{ t((s) => s.profile.puzzleHistory) }}</h2>
-      <p v-if="recentHistory.length === 0" class="empty">
-        {{ t((s) => s.profile.noPuzzlesAttempted) }}
-      </p>
-      <div v-else class="history-grid">
-        <div
-          v-for="card in recentHistory"
-          :key="card.entry.timestamp"
-          :class="['history-card', card.entry.exerciseId ? 'clickable' : '']"
-          :title="card.entry.exerciseId ? t((s) => s.profile.replayPuzzleTitle) : undefined"
-          @click="onCardClick(card.entry)"
-        >
-          <div class="board-wrap">
-            <MiniBoard v-if="card.displayFen" :fen="card.displayFen" />
-            <div v-else class="board-placeholder">?</div>
-          </div>
-          <div :class="['elo-badge', card.entry.change >= 0 ? 'positive' : 'negative']">
-            {{ eloChangeLabel(card.entry.change) }}
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
       <h2 class="section-title">{{ t((s) => s.profile.puzzleDifficulty) }}</h2>
-      <p class="section-desc">{{ t((s) => s.profile.difficultyQuestion) }}</p>
-      <select
-        v-if="profile"
-        class="difficulty-select"
-        :value="profile.difficultyPreference"
-        @change="onDifficultyPreferenceChange"
-      >
-        <option
-          v-for="option in difficultyPreferenceOptions"
-          :key="option.value"
-          :value="option.value"
-        >
-          {{ option.label }}
-        </option>
-      </select>
-      <p class="active-count">
-        {{ t((s) => s.profile.activePuzzleCount, { count: difficultyPuzzleCounts.active }) }}
-      </p>
-      <p v-if="inactivePuzzlesDetail" class="section-desc">
-        <i>{{ t((s) => s.profile.inactiveDetail, { detail: inactivePuzzlesDetail }) }}</i>
-      </p>
-    </section>
-
-    <section class="section">
-      <h2 class="section-title">{{ t((s) => s.profile.lichessTitle) }}</h2>
-      <template v-if="lichessAuth.isLinked.value">
-        <div class="inline-row">
-          <span class="linked-label">
-            {{ t((s) => s.profile.linkedAs) }}
-            <strong>{{ lichessAuth.lichessUsername.value }}</strong>
-          </span>
-          <button class="btn-danger-outline" @click="lichessAuth.unlinkAccount()">
-            {{ t((s) => s.common.unlink) }}
-          </button>
+      <div class="ident-row ident-row-top">
+        <span class="ident-label">{{ t((s) => s.profile.puzzleDifficultyLabel) }}</span>
+        <div class="ident-select-group">
+          <select
+            v-if="profile"
+            class="ident-select"
+            :value="profile.difficultyPreference"
+            @change="onDifficultyPreferenceChange"
+          >
+            <option
+              v-for="option in difficultyPreferenceOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <p class="ident-hint">
+            {{ t((s) => s.profile.activePuzzleCount, { count: difficultyPuzzleCounts.active }) }}
+            <template v-if="inactivePuzzlesDetail">
+              — {{ t((s) => s.profile.inactiveDetail, { detail: inactivePuzzlesDetail }) }}
+            </template>
+          </p>
         </div>
-      </template>
-      <template v-else>
-        <p class="section-desc">
-          {{ t((s) => s.profile.lichessDescription) }}
-        </p>
-        <button class="btn-link-lichess" @click="lichessAuth.startLinkFlow()">
-          {{ t((s) => s.profile.linkLichessAccount) }}
-        </button>
-      </template>
+      </div>
     </section>
 
     <section class="section">
       <h2 class="section-title">{{ t((s) => s.profile.mode.title) }}</h2>
-      <p class="section-desc">{{ t((s) => s.profile.mode.description) }}</p>
-      <select
-        v-if="profile"
-        class="difficulty-select"
-        :value="profile.themeMode"
-        @change="onThemeModeChange"
-      >
-        <option v-for="option in themeModeOptions" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
-    </section>
 
-    <section class="section">
-      <h2 class="section-title">{{ t((s) => s.profile.language.title) }}</h2>
-      <p class="section-desc">{{ t((s) => s.profile.language.description) }}</p>
-      <select
-        v-if="profile"
-        class="difficulty-select"
-        :value="profile.language"
-        @change="onLanguageChange"
-      >
-        <option v-for="option in languageOptions" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
+      <div class="ident-row">
+        <span class="ident-label">{{ t((s) => s.profile.colorSchemeTitle) }}</span>
+        <select
+          v-if="profile"
+          class="ident-select"
+          :value="profile.themeMode"
+          @change="onThemeModeChange"
+        >
+          <option v-for="option in themeModeOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+      </div>
+
+      <div class="ident-row">
+        <span class="ident-label">{{ t((s) => s.profile.language.title) }}</span>
+        <select
+          v-if="profile"
+          class="ident-select"
+          :value="profile.language"
+          @change="onLanguageChange"
+        >
+          <option v-for="option in languageOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+      </div>
     </section>
 
     <section class="section">
       <h2 class="section-title">{{ t((s) => s.profile.accountTitle) }}</h2>
-      <div class="inline-row">
-        <span v-if="authStore.isSignedIn" class="linked-label">
-          {{ t((s) => s.profile.signedInAs) }} <strong>{{ authStore.userEmail }}</strong>
-        </span>
-        <span v-else class="linked-label">{{ t((s) => s.profile.trainingLocallyOnly) }}</span>
-        <button v-if="authStore.isSignedIn" class="btn-danger-outline" @click="onSignOut">
-          {{ t((s) => s.profile.logOut) }}
-        </button>
-        <button class="btn-danger-solid" @click="onDeleteAccountClick">
-          {{ t((s) => s.profile.deleteAccount) }}
-        </button>
+
+      <div class="ident-row ident-row-stacked">
+        <span class="ident-label">{{ t((s) => s.profile.lichessTitle) }}</span>
+        <div class="ident-stack">
+          <span :class="lichessAuth.isLinked.value ? 'status-positive' : 'status-warning'">
+            <template v-if="lichessAuth.isLinked.value">
+              {{ t((s) => s.profile.linkedAs) }} {{ lichessAuth.lichessUsername.value }}
+            </template>
+            <template v-else>{{ t((s) => s.profile.lichessNotLinked) }}</template>
+          </span>
+          <div class="ident-actions">
+            <button
+              v-if="lichessAuth.isLinked.value"
+              class="btn-danger-outline"
+              @click="lichessAuth.unlinkAccount()"
+            >
+              {{ t((s) => s.profile.unlinkLichessAccount) }}
+            </button>
+            <button v-else class="btn-success-outline" @click="lichessAuth.startLinkFlow()">
+              {{ t((s) => s.profile.linkLichessAccount) }}
+            </button>
+          </div>
+        </div>
       </div>
-      <p v-if="syncStore.lastSyncError" class="section-desc error-message">
+
+      <div class="ident-row ident-row-stacked">
+        <span class="ident-label">{{ t((s) => s.profile.endgameNirvanaAccountLabel) }}</span>
+        <div class="ident-stack">
+          <span :class="authStore.isSignedIn ? 'status-positive' : 'status-warning'">
+            {{ authStore.isSignedIn ? authStore.userEmail : t((s) => s.profile.noAccount) }}
+          </span>
+          <div class="ident-actions">
+            <button v-if="authStore.isSignedIn" class="btn-danger-outline" @click="onSignOut">
+              {{ t((s) => s.profile.logOut) }}
+            </button>
+            <button class="btn-danger-solid" @click="onDeleteAccountClick">
+              {{ deleteAccountLabel }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <p v-if="syncStore.lastSyncError" class="ident-hint error-message">
         {{ t((s) => s.profile.syncError, { error: syncStore.lastSyncError }) }}
       </p>
-      <p v-else-if="unsyncedLabel" class="section-desc">{{ unsyncedLabel }}</p>
+      <p v-else-if="unsyncedLabel" class="ident-hint">{{ unsyncedLabel }}</p>
     </section>
 
     <footer class="legal-footer">
@@ -462,43 +382,12 @@ function onCardClick(entry: EloHistoryEntry): void {
 </template>
 
 <style scoped>
-.profile-page {
+.settings-page {
   width: 100%;
   max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: 2rem;
-}
-
-.btn-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--fg);
-  font-size: 0.875rem;
-  cursor: pointer;
-  align-self: flex-start;
-  transition: background 0.1s;
-}
-
-.btn-back:hover {
-  background: var(--hover-bg);
-}
-
-.btn-back svg {
-  width: 14px;
-  height: 14px;
-}
-
-.profile-title {
-  margin: 0;
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--fg);
 }
 
 .section {
@@ -518,39 +407,101 @@ function onCardClick(entry: EloHistoryEntry): void {
   color: var(--fg);
 }
 
-.section-header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-}
-
-.current-elo {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--fg);
-  font-variant-numeric: tabular-nums;
-  margin-top: 1rem;
-  margin-left: 0.5rem;
-}
-
 .section-desc {
   margin: 0;
   font-size: 0.875rem;
   color: var(--muted);
 }
 
-/* Lichess section */
-.inline-row {
+/* Ident-value settings rows */
+.ident-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
 
-.linked-label {
+.ident-label {
+  width: 190px;
+  flex-shrink: 0;
   font-size: 0.9rem;
+  font-weight: 600;
   color: var(--fg);
+}
+
+.ident-row-stacked {
+  align-items: flex-start;
+}
+
+.ident-row-top {
+  align-items: flex-start;
+}
+
+.ident-row-top .ident-label {
+  padding-top: 0.45rem;
+}
+
+.ident-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ident-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.status-positive {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-solved);
+}
+
+.status-warning {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-warning-fg);
+}
+
+.ident-select {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.ident-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ident-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.btn-success-outline {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--btn-success-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--btn-success-border);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.btn-success-outline:hover {
+  background: var(--btn-success-hover-bg);
 }
 
 .btn-link-lichess {
@@ -700,97 +651,5 @@ function onCardClick(entry: EloHistoryEntry): void {
 .btn-link-lichess:disabled {
   opacity: 0.4;
   cursor: default;
-}
-
-/* Difficulty preference */
-.active-count {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.difficulty-select {
-  align-self: flex-start;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--fg);
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-/* Puzzle history */
-.empty {
-  font-size: 0.875rem;
-  color: var(--muted);
-}
-
-.history-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.6rem;
-}
-
-@media (max-width: 560px) {
-  .history-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.history-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-}
-
-.history-card.clickable {
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
-}
-
-.history-card.clickable:hover {
-  border-color: var(--accent);
-  background: var(--hover-bg);
-}
-
-.board-wrap {
-  width: 100%;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.board-placeholder {
-  aspect-ratio: 1;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--badge-bg);
-  color: var(--muted);
-  font-size: 1.5rem;
-  border-radius: 2px;
-}
-
-.elo-badge {
-  font-size: 0.8rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.elo-badge.positive {
-  color: var(--color-solved);
-}
-
-.elo-badge.negative {
-  color: var(--color-failed);
 }
 </style>

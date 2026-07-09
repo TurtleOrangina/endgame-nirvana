@@ -53,6 +53,11 @@ onUnmounted(() => {
   width: 100%;
   aspect-ratio: 1;
   position: relative;
+  /* Chessground draws pieces with z-index up to 11 internally (dragging/anim
+     layers) — isolate them into their own stacking context so they can never
+     paint over sibling overlays (e.g. a difficulty chip) regardless of the
+     overlay's own z-index. */
+  isolation: isolate;
 }
 
 .cg-wrap {
