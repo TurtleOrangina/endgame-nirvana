@@ -10,7 +10,8 @@
 #   sh scripts/db.sh seed [--only-add] [path-to-exercises.json] # seed public.puzzles from exercises.json
 #                                                  # (path defaults to ../frontend/public/exercises.json;
 #                                                  #  default prunes puzzles missing from the file,
-#                                                  #  --only-add keeps them)
+#                                                  #  --only-add keeps them; to seed production instead,
+#                                                  #  run `node scripts/seed_puzzles.mjs --prod` directly)
 #   sh scripts/db.sh all [path-to-exercises.json]  # push + types + seed
 #
 # If the connection pooler rejects the CLI, connect directly instead:

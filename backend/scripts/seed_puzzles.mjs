@@ -5,16 +5,24 @@
 // are deleted via the prune_puzzles RPC (their attempt history survives —
 // attempts.puzzle_id is `on delete set null`). Pass --only-add to skip the
 // prune and leave puzzles not in the file untouched. Zero dependencies — uses
-// only Node builtins + global fetch. Run via `sh scripts/db.sh seed [path]`,
-// which sources backend/.env first.
+// only Node builtins + global fetch.
 //
-// Usage: node scripts/seed_puzzles.mjs [--only-add] [path-to-exercises.json]
+// Targets the local dev stack by default, authenticating with
+// SUPABASE_PUBLIC_URL / SUPABASE_SECRET_KEY from backend/.env (run via
+// `sh scripts/db.sh seed [path]`, which sources .env first). Pass --prod to
+// seed production instead: credentials are then discovered through the
+// Supabase CLI's linked project and authenticated session (same mechanism as
+// export_puzzles.mjs) and the .env variables are ignored.
+//
+// Usage: node scripts/seed_puzzles.mjs [--prod] [--only-add] [path-to-exercises.json]
 // Defaults to ../frontend/public/exercises.json (relative to this script),
 // analogous to export_puzzles.mjs.
 
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { callRpc, resolveProdCredentials } from './supabase_client.mjs'
 
 const backendDir = dirname(dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_INPUT_PATH = join(backendDir, '..', 'frontend', 'public', 'exercises.json')
@@ -65,33 +73,28 @@ function loadPuzzles(exercisesJsonPath) {
   return puzzles
 }
 
-async function callRpc(supabaseUrl, secretKey, rpcName, body) {
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${rpcName}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: secretKey,
-      Authorization: `Bearer ${secretKey}`,
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    throw new Error(`${rpcName} RPC failed (${response.status}): ${errorBody}`)
+function resolveLocalCredentials() {
+  return {
+    supabaseUrl: requireEnv('SUPABASE_PUBLIC_URL'),
+    secretKey: requireEnv('SUPABASE_SECRET_KEY'),
   }
-
-  return response.json()
 }
 
 async function main() {
   const args = process.argv.slice(2)
+  const prod = args.includes('--prod')
   const onlyAdd = args.includes('--only-add')
-  const exercisesJsonPathArg = args.find((arg) => arg !== '--only-add')
+  const unknownFlag = args.find((arg) => arg.startsWith('--') && arg !== '--prod' && arg !== '--only-add')
+  if (unknownFlag) {
+    console.error(`Unknown flag: ${unknownFlag}`)
+    console.error('Usage: node scripts/seed_puzzles.mjs [--prod] [--only-add] [path-to-exercises.json]')
+    process.exit(1)
+  }
+  const exercisesJsonPathArg = args.find((arg) => !arg.startsWith('--'))
   const exercisesJsonPath = resolve(exercisesJsonPathArg || DEFAULT_INPUT_PATH)
 
-  const supabaseUrl = requireEnv('SUPABASE_PUBLIC_URL')
-  const secretKey = requireEnv('SUPABASE_SECRET_KEY')
+  const { supabaseUrl, secretKey } = prod ? resolveProdCredentials() : resolveLocalCredentials()
+  console.log(`Seeding ${supabaseUrl}${prod ? ' (production)' : ''}`)
 
   const puzzles = loadPuzzles(exercisesJsonPath)
   console.log(`Loaded ${puzzles.length} puzzles from ${exercisesJsonPath}`)

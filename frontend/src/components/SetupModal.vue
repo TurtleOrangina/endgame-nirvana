@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
 import { isValidEmail } from '@/utils/email'
+import type { en } from '@/locales/en'
 
 const DRAFT_STORAGE_KEY = 'setup_modal_draft'
 
@@ -28,10 +29,67 @@ const authStore = useAuthStore()
 const lichessAuth = useLichessAuth()
 const { t } = useLocale()
 
+type LocaleSelector = (strings: typeof en) => string
+
+interface StartingLevel {
+  elo: number
+  name: LocaleSelector
+  description: LocaleSelector
+}
+
+const STARTING_LEVELS = [
+  { elo: 600, name: (s) => s.setup.levelBeginner, description: (s) => s.setup.levelBeginnerHint },
+  { elo: 1000, name: (s) => s.setup.levelNovice, description: (s) => s.setup.levelNoviceHint },
+  {
+    elo: 1400,
+    name: (s) => s.setup.levelIntermediate,
+    description: (s) => s.setup.levelIntermediateHint,
+  },
+  {
+    elo: 1800,
+    name: (s) => s.setup.levelClubPlayer,
+    description: (s) => s.setup.levelClubPlayerHint,
+  },
+  { elo: 2200, name: (s) => s.setup.levelMaster, description: (s) => s.setup.levelMasterHint },
+  {
+    elo: 2600,
+    name: (s) => s.setup.levelGrandmaster,
+    description: (s) => s.setup.levelGrandmasterHint,
+  },
+] as const satisfies readonly StartingLevel[]
+
+const DEFAULT_LEVEL_INDEX = 2
+
+function startingLevelAt(index: number): StartingLevel {
+  return STARTING_LEVELS[index] ?? STARTING_LEVELS[DEFAULT_LEVEL_INDEX]
+}
+
+function closestStartingLevelIndex(elo: number): number {
+  let closestIndex = 0
+  let closestDistance = Number.POSITIVE_INFINITY
+  for (const [index, level] of STARTING_LEVELS.entries()) {
+    const distance = Math.abs(level.elo - elo)
+    if (distance < closestDistance) {
+      closestIndex = index
+      closestDistance = distance
+    }
+  }
+  return closestIndex
+}
+
 const mode = ref<SetupMode>('new')
 const step = ref<NewUserStep>('basics')
 const username = ref('')
 const startElo = ref(1400)
+
+const startEloIndex = computed({
+  get: () => closestStartingLevelIndex(startElo.value),
+  set: (index: number) => {
+    startElo.value = startingLevelAt(index).elo
+  },
+})
+
+const selectedLevel = computed(() => startingLevelAt(startEloIndex.value))
 const email = ref('')
 const password = ref('')
 const isSubmitting = ref(false)
@@ -54,7 +112,8 @@ function restoreDraft(): void {
     const draft = JSON.parse(raw) as SetupDraft
     step.value = draft.step
     username.value = draft.username
-    startElo.value = draft.startElo
+    // Snap to a tick in case the draft predates the slider's Elo steps.
+    startElo.value = startingLevelAt(closestStartingLevelIndex(draft.startElo)).elo
     email.value = draft.email
     password.value = draft.password
   } catch {
@@ -363,28 +422,40 @@ async function submitSignIn(): Promise<void> {
 
           <fieldset class="field">
             <legend class="label-text">{{ t((s) => s.setup.startingLevel) }}</legend>
-            <div class="radio-group">
-              <label class="radio-option">
-                <input v-model="startElo" type="radio" :value="800" />
-                <span class="radio-label">
-                  <strong>{{ t((s) => s.setup.beginner) }}</strong>
-                  <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 800 }) }}</span>
-                </span>
-              </label>
-              <label class="radio-option">
-                <input v-model="startElo" type="radio" :value="1400" />
-                <span class="radio-label">
-                  <strong>{{ t((s) => s.setup.intermediate) }}</strong>
-                  <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 1400 }) }}</span>
-                </span>
-              </label>
-              <label class="radio-option">
-                <input v-model="startElo" type="radio" :value="2000" />
-                <span class="radio-label">
-                  <strong>{{ t((s) => s.setup.expert) }}</strong>
-                  <span class="elo-hint">{{ t((s) => s.setup.eloHint, { elo: 2000 }) }}</span>
-                </span>
-              </label>
+            <div class="elo-slider">
+              <input
+                v-model.number="startEloIndex"
+                type="range"
+                class="elo-range"
+                min="0"
+                :max="STARTING_LEVELS.length - 1"
+                step="1"
+                :aria-valuetext="`${startElo} — ${t(selectedLevel.name)}`"
+              />
+              <div class="elo-ticks">
+                <button
+                  v-for="(level, index) in STARTING_LEVELS"
+                  :key="level.elo"
+                  type="button"
+                  class="elo-tick"
+                  :class="{ active: index === startEloIndex }"
+                  @click="startEloIndex = index"
+                >
+                  {{ level.elo }}
+                </button>
+              </div>
+              <!-- All descriptions occupy the same grid cell so the block is always as
+                   tall as the longest one — sliding never resizes the dialog. -->
+              <div class="level-description-stack">
+                <p
+                  v-for="(level, index) in STARTING_LEVELS"
+                  :key="level.elo"
+                  class="level-description"
+                  :class="{ active: index === startEloIndex }"
+                >
+                  <strong>{{ t(level.name) }}:</strong> {{ t(level.description) }}
+                </p>
+              </div>
             </div>
           </fieldset>
         </div>
@@ -791,40 +862,63 @@ h2 {
   border-color: var(--btn-danger-border);
 }
 
-.radio-group {
+.elo-slider {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
-.radio-option {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-
-.radio-option:hover {
-  background: var(--hover-bg);
-}
-
-.radio-option input[type='radio'] {
+.elo-range {
+  width: 100%;
+  margin: 0;
   accent-color: var(--accent);
+  cursor: pointer;
 }
 
-.radio-label {
+.elo-ticks {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
 }
 
-.elo-hint {
+.elo-tick {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.elo-tick:hover {
+  color: var(--fg);
+}
+
+.elo-tick.active {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.level-description-stack {
+  display: grid;
+  margin-top: 0.4rem;
+}
+
+.level-description {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  margin: 0;
   color: var(--muted);
   font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.level-description.active {
+  visibility: visible;
+}
+
+.level-description strong {
+  color: var(--fg);
 }
 
 .btn-submit {
