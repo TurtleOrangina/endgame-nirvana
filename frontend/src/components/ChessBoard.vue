@@ -671,6 +671,7 @@ function setupBoard(fen: string): void {
   const color = playerColor
   isGameOver.value = false
   isAnalysisMode.value = false
+  gameOverEntryBeforeAnalysis = null
   isFindingBestMove.value = false
   isWaitingForEngineReply.value = false
   gameEndInfo.value = null
@@ -1192,11 +1193,21 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 }
 
+// Captured on entering analysis so leaveAnalysisMode can recognize a game that had
+// already ended even though the final position isn't terminal (an auto-solved win, see
+// shouldAutoSolve). updateGameEndDisplay can't re-derive that from the FEN alone, and
+// re-running the engine there would end — and celebrate — the game a second time.
+let gameOverEntryBeforeAnalysis: { index: number; fen: string } | null = null
+
 // Deliberately leaves the board exactly where it is — jumping to move 0 caused vertigo when
 // the user only wanted to glance at the last few moves. A "First Move" nav button already
 // covers the case where they do want the start.
 function enterAnalysisMode(startPaused = false): void {
   if (!chess || !cg) return
+  const lastIndex = historyEntries.value.length - 1
+  const lastEntry = historyEntries.value[lastIndex]
+  gameOverEntryBeforeAnalysis =
+    isGameOver.value && lastEntry ? { index: lastIndex, fen: lastEntry.fen } : null
   analysisPaused.value = startPaused
   isAnalysisMode.value = true
   cg.set({
@@ -1220,7 +1231,11 @@ function leaveAnalysisMode(): void {
   historyEntries.value = historyEntries.value.slice(0, historyIndex.value + 1)
 
   updateGameEndDisplay(chess.fen())
-  isGameOver.value = gameEndInfo.value !== null
+  const leavingAtAlreadyFinishedGame =
+    gameOverEntryBeforeAnalysis !== null &&
+    gameOverEntryBeforeAnalysis.index === historyIndex.value &&
+    gameOverEntryBeforeAnalysis.fen === historyEntries.value[historyIndex.value]?.fen
+  isGameOver.value = gameEndInfo.value !== null || leavingAtAlreadyFinishedGame
 
   if (isGameOver.value) {
     cg.set({ movable: { color: undefined } })
