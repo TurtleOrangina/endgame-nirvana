@@ -108,6 +108,28 @@ const browseInitialCategory = ref<string | null>(null)
 useWakeLock(computed(() => currentView.value === 'training'))
 const puzzleStatus = ref<PuzzleStatus>(PuzzleStatus.SOLVING)
 const isWrongSolution = ref(false)
+const isWrongSolutionFlashVisible = ref(false)
+let wrongSolutionFlashTimeout: ReturnType<typeof setTimeout> | undefined
+
+// Flashes a "Wrong solution" banner over the board itself, so a failure is
+// noticeable even with sounds off and without looking at the sidebar. Skipped
+// when a game-end text (checkmate, draw reason, …) already occupies the board.
+function flashWrongSolutionOnBoard(): void {
+  if (boardRef.value?.isShowingGameEndText) {
+    hideWrongSolutionFlash()
+    return
+  }
+  isWrongSolutionFlashVisible.value = true
+  clearTimeout(wrongSolutionFlashTimeout)
+  wrongSolutionFlashTimeout = setTimeout(() => {
+    isWrongSolutionFlashVisible.value = false
+  }, 2000)
+}
+
+function hideWrongSolutionFlash(): void {
+  clearTimeout(wrongSolutionFlashTimeout)
+  isWrongSolutionFlashVisible.value = false
+}
 const isAnalysisMode = ref(false)
 const analysisPaused = ref(false)
 const analysisTablebaseExpanded = ref(false)
@@ -436,6 +458,7 @@ function onGameOver(result: GameResult): void {
     } else {
       puzzleStatus.value = PuzzleStatus.FAILED
       isWrongSolution.value = true
+      flashWrongSolutionOnBoard()
       if (!isRetry) {
         store.recordFailed()
         audio.playFailureSound()
@@ -443,17 +466,25 @@ function onGameOver(result: GameResult): void {
     }
   } else {
     if (passed) audio.playSuccessSound()
-    else audio.playFailureSound()
+    else {
+      audio.playFailureSound()
+      flashWrongSolutionOnBoard()
+    }
   }
 }
 
-// isWrongSolution always mirrors the latest engine/tablebase verdict for the current position —
-// it's a live indicator, independent of PuzzleStatus (which tracks the once-per-attempt rated
-// outcome and never reverts once FAILED).
+// isWrongSolution mirrors the latest engine/tablebase verdict for the live position and exists
+// to detect the moment the player goes off course (failure sound + board flash). It is
+// independent of PuzzleStatus (which tracks the once-per-attempt rated outcome and never
+// reverts once FAILED); the sidebar "Wrong solution" text is instead derived from the verdict
+// stored on the displayed history entry (ChessBoard's displayedIsOutsideGoal).
 function onGoalEvaluated(isOutsideGoal: boolean): void {
   const justWentOffCourse = isOutsideGoal && !isWrongSolution.value
   isWrongSolution.value = isOutsideGoal
-  if (justWentOffCourse) audio.playFailureSound()
+  if (justWentOffCourse) {
+    audio.playFailureSound()
+    flashWrongSolutionOnBoard()
+  }
   if (isOutsideGoal && puzzleStatus.value === PuzzleStatus.SOLVING) {
     puzzleStatus.value = PuzzleStatus.FAILED
     store.recordFailed()
@@ -463,6 +494,7 @@ function onGoalEvaluated(isOutsideGoal: boolean): void {
 function resetPuzzle(): void {
   puzzleStatus.value = PuzzleStatus.FAILED
   isWrongSolution.value = false
+  hideWrongSolutionFlash()
   analysisLines.value = []
   analysisTablebase.value = null
   analysisFen.value = ''
@@ -485,12 +517,14 @@ function onTakeBack(): void {
   }
   // The position we're rewinding to hasn't been re-evaluated yet — the next move will.
   isWrongSolution.value = false
+  hideWrongSolutionFlash()
   boardRef.value?.takeBack()
 }
 
 function onNext(): void {
   history.pushState(null, '', window.location.href)
   isWrongSolution.value = false
+  hideWrongSolutionFlash()
   store.advanceToNext()
 }
 
@@ -750,17 +784,23 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
       <template v-else>
         <div class="layout two-col">
           <section class="board-area">
-            <ChessBoard
-              v-if="currentExercise"
-              ref="boardRef"
-              :key="currentExercise.id"
-              :fen="currentBoardFen ?? currentExercise.fen"
-              :analysis-settings="analysisSettings"
-              :is-rated-attempt="puzzleStatus === PuzzleStatus.SOLVING"
-              @game-over="onGameOver"
-              @goal-evaluated="onGoalEvaluated"
-              @analysis-update="onAnalysisUpdate"
-            />
+            <div v-if="currentExercise" class="board-wrap">
+              <ChessBoard
+                ref="boardRef"
+                :key="currentExercise.id"
+                :fen="currentBoardFen ?? currentExercise.fen"
+                :analysis-settings="analysisSettings"
+                :is-rated-attempt="puzzleStatus === PuzzleStatus.SOLVING"
+                @game-over="onGameOver"
+                @goal-evaluated="onGoalEvaluated"
+                @analysis-update="onAnalysisUpdate"
+              />
+              <Transition name="wrong-solution-flash">
+                <div v-if="isWrongSolutionFlashVisible" class="wrong-solution-flash">
+                  😞 {{ t((s) => s.app.wrongSolution) }} 😞
+                </div>
+              </Transition>
+            </div>
             <div v-else class="empty-board" aria-hidden="true">
               <div
                 v-for="square in emptyBoardSquares"
@@ -909,8 +949,10 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                   </button>
                 </section>
 
-                <!-- Wrong solution indicator -->
-                <div v-if="isWrongSolution" class="wrong-solution">
+                <!-- Wrong solution indicator: derived from the verdict stored on the
+                     displayed history entry, so it follows take-backs and arrow-key
+                     history navigation. -->
+                <div v-if="boardRef?.displayedIsOutsideGoal" class="wrong-solution">
                   {{ t((s) => s.app.wrongSolution) }}
                 </div>
 
@@ -1615,6 +1657,51 @@ body {
   color: var(--btn-danger-fg);
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+.board-wrap {
+  position: relative;
+  container-type: inline-size;
+}
+
+/* Styled like ChessBoard.vue's on-board texts (.game-intro / .game-end-reason):
+   free-floating bold text with a shadow, sized relative to the board. */
+.wrong-solution-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 8%;
+  font-size: 4.5cqw;
+  font-weight: 800;
+  white-space: nowrap;
+  color: #dc2626;
+  text-shadow:
+    0 0 12px rgba(0, 0, 0, 0.8),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.wrong-solution-flash-enter-active {
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
+}
+
+.wrong-solution-flash-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.wrong-solution-flash-enter-from {
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+.wrong-solution-flash-leave-to {
+  opacity: 0;
 }
 
 /* ── Actions ──────────────────────────────────────────────── */

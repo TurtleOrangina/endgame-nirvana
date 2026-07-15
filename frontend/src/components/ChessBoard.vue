@@ -36,6 +36,10 @@ interface HistoryEntry {
   uciMove?: string
   movesSinceZero: number
   sound: BoardSound
+  // Goal verdict of this position once evaluated (player-move positions and game ends);
+  // undefined = never directly evaluated — such positions inherit the verdict of the
+  // nearest evaluated position before them (see displayedIsOutsideGoal).
+  isOutsideGoal?: boolean
 }
 
 interface PendingPromotion {
@@ -116,6 +120,28 @@ const analysisPaused = ref(false)
 const isWaitingForEngineReply = ref(false)
 
 const hasMoves = computed(() => historyEntries.value.length > 1)
+
+function recordGoalVerdict(fen: string, isOutsideGoal: boolean): void {
+  const entries = historyEntries.value
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i]
+    if (entry?.fen === fen) {
+      entry.isOutsideGoal = isOutsideGoal
+      return
+    }
+  }
+}
+
+// Whether the currently displayed position counts as off-course, so the "Wrong solution"
+// indicator can follow history navigation: stepping back to a position that was still on
+// track hides it, stepping forward past the mistake brings it back.
+const displayedIsOutsideGoal = computed(() => {
+  for (let i = historyIndex.value; i >= 0; i--) {
+    const verdict = historyEntries.value[i]?.isOutsideGoal
+    if (verdict !== undefined) return verdict
+  }
+  return false
+})
 const currentMovesSinceZero = computed(
   () => historyEntries.value[historyIndex.value]?.movesSinceZero ?? 0,
 )
@@ -462,6 +488,7 @@ const introColor = ref<PlayerColor | null>(null)
 const introAnimationKey = ref(0)
 
 const gameEndInfo = ref<GameEndInfo | null>(null)
+const isShowingGameEndText = computed(() => gameEndInfo.value !== null)
 // Bumped every time a game-end position is (re-)reached, so the reason banner replays
 // its animation even when the underlying reason text hasn't changed (e.g. stepping away
 // from and back to the same checkmate with the arrow keys).
@@ -531,6 +558,8 @@ function endGame(result: GameResult): void {
   isWaitingForEngineReply.value = false
   isGameOver.value = true
   cg.set({ movable: { color: undefined } })
+  const expectedResult = useExercisesStore().currentExercise?.expectedResult
+  if (expectedResult) recordGoalVerdict(chess.fen(), result !== expectedResult)
   updateGameEndDisplay(chess.fen())
   emit('game-over', result)
 }
@@ -909,6 +938,7 @@ async function checkExerciseFailure(
     )
   }
 
+  recordGoalVerdict(fen, isOutsideGoal)
   emit('goal-evaluated', isOutsideGoal)
 }
 
@@ -1254,6 +1284,8 @@ onUnmounted(() => {
 })
 
 defineExpose({
+  isShowingGameEndText,
+  displayedIsOutsideGoal,
   resetBoard,
   takeBack,
   hasMoves,
