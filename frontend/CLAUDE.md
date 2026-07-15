@@ -23,8 +23,12 @@ so a no-backend build keeps working exactly as before.
 
 - `src/stores/auth.ts` — Supabase Auth session state, sign up/in/out, pending-registration
   retry (email/username/startElo only — never the password), and the `PASSWORD_RECOVERY`
-  event. `authStore.init()` must run before the other stores hydrate (see `App.vue`'s
-  `onMounted`), since it awaits the initial cloud pull if a session already exists.
+  event. `authStore.init()` is deliberately _not_ awaited by `App.vue`'s `onMounted` —
+  with an expired access token it refreshes over the network inside `getSession()`,
+  which can hang on a bad connection, and the offline-capable stores must never wait
+  behind it. The cloud pull it triggers merges into the stores whenever it lands; the
+  password-recovery token is read from the URL synchronously before `init()`'s first
+  await, since routing rewrites the URL without waiting for it.
 - `src/stores/sync.ts` — the write-behind outbox: batches `PendingAttempt[]` and a
   `profileDirty` flag into at most two requests (one `record_attempts` RPC, one `profiles`
   update) per 2s debounce window, flushing also on reconnect, tab-hide, and login.

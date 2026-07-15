@@ -194,7 +194,14 @@ onMounted(async () => {
     return
   }
 
-  await authStore.init()
+  // Deliberately not awaited: with a signed-in session whose access token has
+  // expired, init() refreshes it over the network inside getSession(), which can
+  // hang for many seconds on a bad connection — and everything below reads only
+  // localStorage / static assets, so it must never wait behind that. The cloud
+  // pull init() kicks off merges into the stores whenever it lands. Its only
+  // ordering requirement — reading the recovery token before routing rewrites
+  // the URL — is satisfied synchronously inside init() before its first await.
+  void authStore.init()
   syncStore.setUpAutoFlushListeners()
   userProfileStore.load()
   if (!profile.value) setupWizardOpen.value = true

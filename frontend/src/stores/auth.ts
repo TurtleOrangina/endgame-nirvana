@@ -73,13 +73,17 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Wires up the auth session and its change listener. Idempotent, and a no-op
   // when the backend isn't configured (see supabaseClient.ts) so the app stays
-  // fully offline-capable. Call once, before the other stores initialize. Awaits
-  // the initial pull (if already signed in) so the profile is ready before the
-  // caller proceeds; later SIGNED_IN events (from signIn/signUp) are handled by
-  // the listener.
+  // fully offline-capable. Deliberately NOT awaited by App.vue's onMounted:
+  // getSession() refreshes an expired access token over the network, which can
+  // hang for many seconds on a bad connection — the offline-capable stores
+  // (profile, exercise catalog) must never wait behind it. Anything that reads
+  // the URL therefore happens synchronously before the first await, since the
+  // caller's routing rewrites the URL without waiting for init() to finish.
   async function init(): Promise<void> {
     if (!supabase || initialized) return
     initialized = true
+
+    const recoveryTokenHash = captureRecoveryTokenFromUrl()
 
     const { data } = await supabase.auth.getSession()
     session.value = data.session
@@ -96,7 +100,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
     })
 
-    await consumeRecoveryTokenFromUrl()
+    if (recoveryTokenHash) await verifyRecoveryToken(recoveryTokenHash)
 
     // Fire-and-forget: the cloud pull is best-effort background sync (see the
     // frontend CLAUDE.md's Backend section), not a precondition for the rest of the
@@ -111,20 +115,24 @@ export const useAuthStore = defineStore('auth', () => {
   // (via a customized Supabase email template), instead of bouncing through the
   // supabase.co verify endpoint — that hop showed a raw redirect page when the
   // browser paused navigation to offer opening the installed PWA. The token is
-  // therefore verified here, on app load.
-  async function consumeRecoveryTokenFromUrl(): Promise<void> {
-    if (!supabase) return
+  // therefore read and verified here, on app load. Must run synchronously (see
+  // init) so App.vue's routing can't rewrite the URL before the token is read.
+  // Stripping the one-time token immediately also ensures a reload doesn't
+  // retry an already-consumed token (and keeps it out of history).
+  function captureRecoveryTokenFromUrl(): string | null {
     const params = new URLSearchParams(window.location.search)
     const tokenHash = params.get('token_hash')
-    if (!tokenHash || params.get('type') !== 'recovery') return
+    if (!tokenHash || params.get('type') !== 'recovery') return null
 
-    // Strip the one-time token from the URL before verifying, so a reload
-    // doesn't retry an already-consumed token (and it stays out of history).
     params.delete('token_hash')
     params.delete('type')
     const query = params.toString()
     history.replaceState(history.state, '', window.location.pathname + (query ? `?${query}` : ''))
+    return tokenHash
+  }
 
+  async function verifyRecoveryToken(tokenHash: string): Promise<void> {
+    if (!supabase) return
     const { error } = await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
     passwordRecoveryLinkInvalid.value = error !== null
     passwordRecoveryRequested.value = true
