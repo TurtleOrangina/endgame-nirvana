@@ -572,13 +572,16 @@ function canResumeFromHistory(): boolean {
   return !!chess && !props.isRatedAttempt && toColor(chess.turn()) === playerColor
 }
 
-function showHistoryPosition(soundFallback?: HistoryEntry): void {
+// When stepping back, the move being undone is the one recorded on the entry we're
+// leaving, so its sound is passed in via `undoneEntry`; when stepping forward, the
+// replayed move is the one recorded on the entry we land on.
+function showHistoryPosition(undoneEntry?: HistoryEntry): void {
   if (!cg || !chess) return
   const entry = historyEntries.value[historyIndex.value]
   if (!entry) return
 
-  const soundSource = entry.lastMove ? entry : soundFallback
-  if (soundSource?.lastMove) {
+  const soundSource = undoneEntry ?? entry
+  if (soundSource.lastMove) {
     boardAudio.play(soundSource.sound)
   }
 
