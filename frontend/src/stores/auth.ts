@@ -9,6 +9,7 @@ export interface AuthActionResult {
   emailAlreadyRegistered?: boolean
   emailConfirmationRequired?: boolean
   invalidCredentials?: boolean
+  emailNotConfirmed?: boolean
 }
 
 // Kept only in memory (never persisted, unlike PendingRegistration) since it holds the
@@ -199,6 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
     return {
       error: friendlyAuthErrorMessage(error),
       invalidCredentials: error.code === 'invalid_credentials',
+      emailNotConfirmed: error.code === 'email_not_confirmed',
     }
   }
 

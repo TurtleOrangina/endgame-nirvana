@@ -174,6 +174,18 @@ watch(
 
 const hasAccountDetails = computed(() => email.value.trim().length > 0 && password.value.length > 0)
 
+// A session can appear without any action in this tab: the email-confirmation link
+// signs the user in wherever it opens, and supabase-js broadcasts the sign-in to
+// every other tab. Once the cloud profile has been pulled, the wizard has nothing
+// left to collect — close it instead of leaving a signed-in user on a signup form.
+watch(
+  () => authStore.isSignedIn && userProfileStore.profile !== null,
+  (signedInWithProfile) => {
+    if (signedInWithProfile) emit('close')
+  },
+  { immediate: true },
+)
+
 // The "Welcome to..." branding only makes sense as a first impression — once the user is
 // mid-wizard, the step's own heading is more useful up top than repeating it every time.
 const headerTitle = computed((): string => {
@@ -265,11 +277,22 @@ async function submitAccountStep(): Promise<void> {
 
 async function attemptLoginAfterConfirmation(): Promise<void> {
   loginError.value = null
+  // The confirmation link may already have signed this tab in (directly, or via
+  // supabase-js's cross-tab broadcast, which also clears the stored credentials
+  // this retry would use) — there's nothing to log in to then.
+  if (authStore.isSignedIn) {
+    emit('close')
+    return
+  }
   isLoggingIn.value = true
   const result = await authStore.retryLoginAfterConfirmation()
   isLoggingIn.value = false
   if (result.error) {
-    loginError.value = t((s) => s.setup.notActivatedYet)
+    loginError.value = result.emailNotConfirmed
+      ? t((s) => s.setup.notActivatedYet)
+      : result.invalidCredentials
+        ? t((s) => s.setup.errorInvalidCredentials)
+        : result.error
     return
   }
   // The SIGNED_IN listener's pullRemoteState is hydrating the profile from the cloud;
