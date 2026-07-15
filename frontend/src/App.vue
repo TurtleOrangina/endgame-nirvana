@@ -16,6 +16,7 @@ import {
   type AppView,
 } from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
+import { playerPiecesSortedByValue, type PieceName } from '@/utils/chess'
 import LegalPage from '@/components/LegalPage.vue'
 import { useWakeLock } from '@/composables/useWakeLock'
 import ChessBoard from '@/components/ChessBoard.vue'
@@ -363,6 +364,17 @@ const boardTitle = computed(() => {
     return turn === 'w' ? t((s) => s.app.youPlayWhite) : t((s) => s.app.youPlayBlack)
   }
   return 'Endgame Nirvana'
+})
+
+// The player's starting material, shown as small board-piece sprites after the
+// "You play white/black" header title on the training view.
+const titlePieces = computed<{ color: 'white' | 'black'; pieces: PieceName[] } | null>(() => {
+  if (currentView.value !== 'training' || isAnalysisMode.value) return null
+  if (!profile.value || !currentExercise.value) return null
+  const fen = currentBoardFen.value
+  if (!fen) return null
+  const color = (fen.split(' ')[1] ?? 'w') === 'w' ? 'white' : 'black'
+  return { color, pieces: playerPiecesSortedByValue(fen, color) }
 })
 
 // AppHeader is only ever rendered outside the impressum/datenschutz branch (see template),
@@ -713,6 +725,7 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
     <div v-else class="page">
       <AppHeader
         :title="pageTitle"
+        :title-pieces="titlePieces"
         :active-view="headerActiveView"
         :username="profile?.username ?? null"
         @navigate="navigateToView"

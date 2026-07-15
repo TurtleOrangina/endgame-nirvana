@@ -456,6 +456,11 @@ function classifyGameEnd(
   return null
 }
 
+// Shown when a fresh exercise is set up, so it's obvious which side the player has —
+// disappears as soon as the first move is made (and fades out on its own before that).
+const introColor = ref<PlayerColor | null>(null)
+const introAnimationKey = ref(0)
+
 const gameEndInfo = ref<GameEndInfo | null>(null)
 // Bumped every time a game-end position is (re-)reached, so the reason banner replays
 // its animation even when the underlying reason text hasn't changed (e.g. stepping away
@@ -640,6 +645,8 @@ function setupBoard(fen: string): void {
   isFindingBestMove.value = false
   isWaitingForEngineReply.value = false
   gameEndInfo.value = null
+  introColor.value = color
+  introAnimationKey.value++
 
   historyEntries.value = [
     { fen, lastMove: undefined, movedBy: null, movesSinceZero: 0, sound: 'move' },
@@ -1298,6 +1305,14 @@ defineExpose({
         </span>
       </div>
     </template>
+    <div
+      v-if="introColor && !hasMoves && !isAnalysisMode && !gameEndInfo"
+      :key="introAnimationKey"
+      class="game-intro"
+      :class="introColor"
+    >
+      {{ introColor === 'white' ? t((s) => s.app.youPlayWhite) : t((s) => s.app.youPlayBlack) }}
+    </div>
     <template v-if="pendingPromotion">
       <div class="promotion-backdrop" />
       <div class="promotion-picker cg-wrap" :style="promotionPickerStyle">
@@ -1428,6 +1443,36 @@ defineExpose({
     transform: scale(1);
     opacity: 1;
   }
+}
+
+.game-intro {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 8%;
+  font-size: 10cqw;
+  font-weight: 800;
+  pointer-events: none;
+  opacity: 0;
+  animation: game-end-reason-fade 3s ease-out forwards;
+}
+
+.game-intro.white {
+  color: #fff;
+  text-shadow:
+    0 0 12px rgba(0, 0, 0, 0.8),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.game-intro.black {
+  color: #000;
+  text-shadow:
+    0 0 12px rgba(255, 255, 255, 0.8),
+    0 2px 4px rgba(255, 255, 255, 0.6);
 }
 
 .game-end-reason {

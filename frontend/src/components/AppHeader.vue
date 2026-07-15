@@ -2,12 +2,14 @@
 import { ref, computed } from 'vue'
 import { useLocale } from '@/composables/useLocale'
 import type { AppView } from '@/composables/useAppRouter'
+import type { PieceName } from '@/utils/chess'
 import NavIcon from '@/components/NavIcon.vue'
 
 type NavView = Exclude<AppView, 'analysis'>
 
 const props = defineProps<{
   title: string
+  titlePieces?: { color: 'white' | 'black'; pieces: PieceName[] } | null
   activeView: NavView
   username: string | null
 }>()
@@ -47,6 +49,13 @@ function onNavigate(view: NavView): void {
     <div class="header-left">
       <NavIcon :icon="activeIcon" class="title-icon" />
       <span class="board-title">{{ title }}</span>
+      <span v-if="titlePieces" class="title-pieces cg-wrap">
+        <piece
+          v-for="(pieceName, index) in titlePieces.pieces"
+          :key="index"
+          :class="[titlePieces.color, pieceName]"
+        />
+      </span>
     </div>
 
     <details v-if="username" ref="dropdownRef" class="dropdown">
@@ -127,6 +136,26 @@ function onNavigate(view: NavView): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Deliberately a fixed light board-square colour (not a theme variable): black pieces
+   would otherwise be hard to make out against the dark-mode page background. */
+.title-pieces {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #ece4d6;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.title-pieces piece {
+  position: static;
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-size: cover;
 }
 
 .dropdown {

@@ -13,6 +13,25 @@ export function toFigurineSan(san: string): string {
   return san.replace(/^[KQRBN]/, (c) => FIGURINES[c] ?? c)
 }
 
+export type PieceName = 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
+
+const PIECE_VALUE_ORDER = ['k', 'q', 'r', 'b', 'n', 'p']
+const PIECE_NAMES_BY_LETTER: Record<string, PieceName> = {
+  k: 'king',
+  q: 'queen',
+  r: 'rook',
+  b: 'bishop',
+  n: 'knight',
+  p: 'pawn',
+}
+
+export function playerPiecesSortedByValue(fen: string, color: PlayerColor): PieceName[] {
+  return [...piecesByColor(fen)[color]]
+    .sort((a, b) => PIECE_VALUE_ORDER.indexOf(a) - PIECE_VALUE_ORDER.indexOf(b))
+    .map((letter) => PIECE_NAMES_BY_LETTER[letter])
+    .filter((name): name is PieceName => !!name)
+}
+
 export function uciToMoveArgs(uci: string): {
   from: string
   to: string
