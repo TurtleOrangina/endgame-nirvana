@@ -85,6 +85,10 @@ const props = defineProps<{
   fen: string
   analysisSettings: AnalysisSettings
   isRatedAttempt: boolean
+  // While true (e.g. the setup modal is open in front of the board), the "You play
+  // white/black" intro is held back; it plays once the flag drops, since the CSS
+  // animation starts when the element enters the DOM.
+  suppressIntro: boolean
 }>()
 
 const emit = defineEmits<{
@@ -1356,7 +1360,7 @@ defineExpose({
       </div>
     </template>
     <div
-      v-if="introColor && !hasMoves && !isAnalysisMode && !gameEndInfo"
+      v-if="introColor && !suppressIntro && !hasMoves && !isAnalysisMode && !gameEndInfo"
       :key="introAnimationKey"
       class="game-intro"
       :class="introColor"

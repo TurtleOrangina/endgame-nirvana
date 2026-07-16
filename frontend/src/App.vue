@@ -800,6 +800,7 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                 :fen="currentBoardFen ?? currentExercise.fen"
                 :analysis-settings="analysisSettings"
                 :is-rated-attempt="puzzleStatus === PuzzleStatus.SOLVING"
+                :suppress-intro="setupWizardOpen"
                 @game-over="onGameOver"
                 @goal-evaluated="onGoalEvaluated"
                 @analysis-update="onAnalysisUpdate"
