@@ -48,13 +48,15 @@ function onNavigate(view: NavView): void {
   <div class="app-header" :class="{ wide: activeView === 'training' }">
     <div class="header-left">
       <NavIcon :icon="activeIcon" class="title-icon" />
-      <span class="board-title">{{ title }}</span>
-      <span v-if="titlePieces" class="title-pieces cg-wrap">
-        <piece
-          v-for="(pieceName, index) in titlePieces.pieces"
-          :key="index"
-          :class="[titlePieces.color, pieceName]"
-        />
+      <span class="title-row">
+        <span class="board-title">{{ title }}</span>
+        <span v-if="titlePieces" class="title-pieces cg-wrap">
+          <piece
+            v-for="(pieceName, index) in titlePieces.pieces"
+            :key="index"
+            :class="[titlePieces.color, pieceName]"
+          />
+        </span>
       </span>
     </div>
 
@@ -128,7 +130,28 @@ function onNavigate(view: NavView): void {
   color: var(--accent);
 }
 
+/* Shows the piece figurines only when they fit next to the title: the row is a
+   flex-wrap container clipped to a single line, so when there isn't enough width
+   the pieces wrap onto a second line that the max-height/overflow hides entirely
+   (the generous row-gap guarantees the wrapped line starts below the clip edge).
+   The title itself is always on the first line, where it can still shrink and
+   ellipsize as before. */
+.title-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 0.5rem;
+  row-gap: 1rem;
+  /* One row: tall enough for the 28px pieces badge, or the title's own line
+     height when the user's base font size is larger. */
+  max-height: max(28px, 1.7rem);
+  overflow: hidden;
+}
+
 .board-title {
+  min-width: 0;
   font-size: 1.2rem;
   font-weight: 700;
   letter-spacing: 0.03em;
