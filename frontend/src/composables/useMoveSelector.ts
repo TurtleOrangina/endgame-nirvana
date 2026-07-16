@@ -17,6 +17,7 @@ import { useLichessTablebase, type OutcomeRetainingResult } from '@/composables/
 import { scoreToOutcome } from '@/utils/puzzleEvaluation'
 import { EPSILON, weightedSample } from '@/utils/weightedSample'
 import {
+  hasPawnsOnBoard,
   isBareKingVsMajorPiece,
   isSymmetricMajorPieceEndgame,
   MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON,
@@ -479,13 +480,19 @@ export function useMoveSelector() {
       }
     } else {
       const delayerWeights = getSamplingWeightsDelayer(candidatesWithDtd)
-      const trickster = await getSamplingWeightsTrickster(
-        candidatesWithDtd,
-        currentFen,
-        outcomeWithBestUserPlay,
-        options.shouldAbort,
-      )
-      weights = combineDelayerAndTrickster(delayerWeights, trickster.weights)
+      // In a pawnless lost position the trickster adds nothing but noise — pure piece
+      // play offers no structural traps worth steering into, so the delayer decides alone
+      const trickster = hasPawnsOnBoard(currentFen)
+        ? await getSamplingWeightsTrickster(
+            candidatesWithDtd,
+            currentFen,
+            outcomeWithBestUserPlay,
+            options.shouldAbort,
+          )
+        : null
+      weights = trickster
+        ? combineDelayerAndTrickster(delayerWeights, trickster.weights)
+        : delayerWeights
       console.log(`Move candidates (${outcomeWithBestUserPlay}) ${currentFen}:\n`)
       const byCombinedWeightDescending = [...candidatesWithDtd.keys()].sort(
         (a, b) => weights[b]! - weights[a]!,
@@ -494,9 +501,9 @@ export function useMoveSelector() {
         const c = candidatesWithDtd[i]!
         const move = uciToSan(c.moves[0]!).padStart(5)
         const dtd = String(c.dtd ?? '?').padStart(2)
-        const fault = asPercent(1 - trickster.lineProducts[i]!)
+        const fault = trickster ? asPercent(1 - trickster.lineProducts[i]!) : '  n/a'
         const wDelayer = asPercent(delayerWeights[i]!)
-        const wTrickster = asPercent(trickster.weights[i]!)
+        const wTrickster = trickster ? asPercent(trickster.weights[i]!) : '  n/a'
 
         console.log(
           `    ${move} w=${asPercent(weights[i]!)} w_delayer=${wDelayer} w_trickster=${wTrickster} ` +

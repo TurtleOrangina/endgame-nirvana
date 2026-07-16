@@ -55,6 +55,11 @@ export function piecesByColor(fen: string): { white: string[]; black: string[] }
   return { white, black }
 }
 
+export function hasPawnsOnBoard(fen: string): boolean {
+  const { white, black } = piecesByColor(fen)
+  return white.includes('p') || black.includes('p')
+}
+
 // Below this rating, converting a bare-king-vs-major-piece material edge isn't
 // trivial yet, so it shouldn't be treated as an automatic win.
 export const MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON = 1000
