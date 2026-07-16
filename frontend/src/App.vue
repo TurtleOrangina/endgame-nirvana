@@ -29,6 +29,7 @@ import SolveProgressPage from '@/components/SolveProgressPage.vue'
 import BrowseExercisesPage from '@/components/BrowseExercisesPage.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import PasswordRecoveryModal from '@/components/PasswordRecoveryModal.vue'
+import EmailConfirmationModal from '@/components/EmailConfirmationModal.vue'
 import {
   PuzzleStatus,
   type GameResult,
@@ -43,7 +44,7 @@ const userProfileStore = useUserProfileStore()
 const authStore = useAuthStore()
 const syncStore = useSyncStore()
 const lichessAuth = useLichessAuth()
-const { passwordRecoveryRequested } = storeToRefs(authStore)
+const { passwordRecoveryRequested, emailConfirmationOutcome } = storeToRefs(authStore)
 const {
   isLoading,
   categoryOptions,
@@ -756,6 +757,7 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
 <template>
   <SetupModal v-if="setupWizardOpen" @close="setupWizardOpen = false" />
   <PasswordRecoveryModal v-if="passwordRecoveryRequested" />
+  <EmailConfirmationModal v-if="emailConfirmationOutcome" />
 
   <div class="app">
     <LegalPage

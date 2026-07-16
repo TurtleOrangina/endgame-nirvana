@@ -265,6 +265,13 @@ export const en = {
     body: 'You will lose all your progress and settings. This action cannot be undone.',
     confirm: 'Delete Account',
   },
+  emailConfirmation: {
+    confirmedTitle: 'Email confirmed',
+    confirmedMessage: 'Your email address is confirmed and you are now signed in.',
+    invalidTitle: 'Confirmation failed',
+    linkInvalid: 'This confirmation link is invalid or has expired.',
+    ok: 'OK',
+  },
   passwordRecovery: {
     title: 'Choose a new password',
     subtitle: 'Enter a new password for your account.',

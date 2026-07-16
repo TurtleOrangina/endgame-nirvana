@@ -273,6 +273,13 @@ export const de: typeof en = {
     body: 'Du verlierst deinen gesamten Fortschritt und alle Einstellungen. Diese Aktion kann nicht rückgängig gemacht werden.',
     confirm: 'Konto löschen',
   },
+  emailConfirmation: {
+    confirmedTitle: 'E-Mail bestätigt',
+    confirmedMessage: 'Deine E-Mail-Adresse ist bestätigt und du bist jetzt angemeldet.',
+    invalidTitle: 'Bestätigung fehlgeschlagen',
+    linkInvalid: 'Dieser Bestätigungslink ist ungültig oder abgelaufen.',
+    ok: 'OK',
+  },
   passwordRecovery: {
     title: 'Wähle ein neues Passwort',
     subtitle: 'Gib ein neues Passwort für dein Konto ein.',

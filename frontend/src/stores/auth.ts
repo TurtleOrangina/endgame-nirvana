@@ -57,6 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
   const awaitingEmailConfirmation = ref<AwaitingEmailConfirmation | null>(null)
   const passwordRecoveryRequested = ref(false)
   const passwordRecoveryLinkInvalid = ref(false)
+  const emailConfirmationOutcome = ref<'confirmed' | 'linkInvalid' | null>(null)
   let initialized = false
 
   const isBackendConfigured = computed(() => supabase !== null)
@@ -84,7 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!supabase || initialized) return
     initialized = true
 
-    const recoveryTokenHash = captureRecoveryTokenFromUrl()
+    const emailToken = captureEmailTokenFromUrl()
 
     const { data } = await supabase.auth.getSession()
     session.value = data.session
@@ -101,7 +102,8 @@ export const useAuthStore = defineStore('auth', () => {
       }
     })
 
-    if (recoveryTokenHash) await verifyRecoveryToken(recoveryTokenHash)
+    if (emailToken?.type === 'recovery') await verifyRecoveryToken(emailToken.tokenHash)
+    if (emailToken?.type === 'signup') await verifySignupToken(emailToken.tokenHash)
 
     // Fire-and-forget: the cloud pull is best-effort background sync (see the
     // frontend CLAUDE.md's Backend section), not a precondition for the rest of the
@@ -112,24 +114,26 @@ export const useAuthStore = defineStore('auth', () => {
     if (session.value) void useSyncStore().pullRemoteState()
   }
 
-  // The password-reset email links straight back to the app with a token_hash
-  // (via a customized Supabase email template), instead of bouncing through the
-  // supabase.co verify endpoint — that hop showed a raw redirect page when the
-  // browser paused navigation to offer opening the installed PWA. The token is
-  // therefore read and verified here, on app load. Must run synchronously (see
-  // init) so App.vue's routing can't rewrite the URL before the token is read.
-  // Stripping the one-time token immediately also ensures a reload doesn't
-  // retry an already-consumed token (and keeps it out of history).
-  function captureRecoveryTokenFromUrl(): string | null {
+  // The password-reset and signup-confirmation emails link straight back to the
+  // app with a token_hash (via customized Supabase email templates), instead of
+  // bouncing through the supabase.co verify endpoint — that hop showed a raw
+  // redirect page when the browser paused navigation to offer opening the
+  // installed PWA. The token is therefore read and verified here, on app load.
+  // Must run synchronously (see init) so App.vue's routing can't rewrite the URL
+  // before the token is read. Stripping the one-time token immediately also
+  // ensures a reload doesn't retry an already-consumed token (and keeps it out
+  // of history).
+  function captureEmailTokenFromUrl(): { tokenHash: string; type: 'recovery' | 'signup' } | null {
     const params = new URLSearchParams(window.location.search)
     const tokenHash = params.get('token_hash')
-    if (!tokenHash || params.get('type') !== 'recovery') return null
+    const type = params.get('type')
+    if (!tokenHash || (type !== 'recovery' && type !== 'signup')) return null
 
     params.delete('token_hash')
     params.delete('type')
     const query = params.toString()
     history.replaceState(history.state, '', window.location.pathname + (query ? `?${query}` : ''))
-    return tokenHash
+    return { tokenHash, type }
   }
 
   async function verifyRecoveryToken(tokenHash: string): Promise<void> {
@@ -137,6 +141,23 @@ export const useAuthStore = defineStore('auth', () => {
     const { error } = await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
     passwordRecoveryLinkInvalid.value = error !== null
     passwordRecoveryRequested.value = true
+  }
+
+  // A successful signup verification returns a session, so the SIGNED_IN listener
+  // takes care of the rest (clearing awaitingEmailConfirmation, pulling cloud
+  // state) — the user lands in the app already logged in, no retry-login needed.
+  // A failed one with a live session means the token was already consumed (e.g.
+  // the link clicked twice) — the user is confirmed and signed in regardless, so
+  // no modal, invalid or otherwise, should get in their way.
+  async function verifySignupToken(tokenHash: string): Promise<void> {
+    if (!supabase) return
+    const { error } = await supabase.auth.verifyOtp({ type: 'signup', token_hash: tokenHash })
+    if (error && session.value) return
+    emailConfirmationOutcome.value = error ? 'linkInvalid' : 'confirmed'
+  }
+
+  function dismissEmailConfirmation(): void {
+    emailConfirmationOutcome.value = null
   }
 
   async function signUp(
@@ -272,6 +293,7 @@ export const useAuthStore = defineStore('auth', () => {
     awaitingEmailConfirmation,
     passwordRecoveryRequested,
     passwordRecoveryLinkInvalid,
+    emailConfirmationOutcome,
     isBackendConfigured,
     isSignedIn,
     userEmail,
@@ -285,5 +307,6 @@ export const useAuthStore = defineStore('auth', () => {
     requestPasswordReset,
     confirmPasswordRecovery,
     dismissPasswordRecovery,
+    dismissEmailConfirmation,
   }
 })
