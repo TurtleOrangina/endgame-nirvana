@@ -22,7 +22,7 @@ const emit = defineEmits<{
 const { t } = useLocale()
 const dropdownRef = ref<HTMLDetailsElement | null>(null)
 
-type NavIconName = 'dumbbell' | 'trending-up' | 'file-search' | 'settings'
+type NavIconName = 'dumbbell' | 'trending-up' | 'file-search' | 'settings' | 'info'
 
 const navItems: { view: NavView; label: () => string; icon: NavIconName }[] = [
   { view: 'training', label: () => t((s) => s.app.navTraining), icon: 'dumbbell' },
@@ -33,6 +33,7 @@ const navItems: { view: NavView; label: () => string; icon: NavIconName }[] = [
     icon: 'file-search',
   },
   { view: 'settings', label: () => t((s) => s.profile.settingsTitle), icon: 'settings' },
+  { view: 'about', label: () => t((s) => s.about.navTitle), icon: 'info' },
 ]
 
 const activeIcon = computed<NavIconName>(

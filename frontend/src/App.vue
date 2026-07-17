@@ -13,6 +13,7 @@ import {
   parseCurrentRoute,
   buildRouteUrl,
   matchLegalRoute,
+  isStandalonePageView,
   type AppView,
 } from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
@@ -33,6 +34,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import SolveProgressPage from '@/components/SolveProgressPage.vue'
 import BrowseExercisesPage from '@/components/BrowseExercisesPage.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
+import AboutPage from '@/components/AboutPage.vue'
 import PasswordRecoveryModal from '@/components/PasswordRecoveryModal.vue'
 import EmailConfirmationModal from '@/components/EmailConfirmationModal.vue'
 import {
@@ -106,7 +108,7 @@ const { t, setLocale } = useLocale()
 
 const boardRef = ref<InstanceType<typeof ChessBoard> | null>(null)
 const dropdownRef = ref<HTMLDetailsElement | null>(null)
-type MainView = 'training' | 'solveProgress' | 'browseExercises' | 'settings'
+type MainView = Exclude<AppView, 'analysis'>
 const currentView = ref<MainView | 'impressum' | 'datenschutz'>('training')
 const browseInitialCategory = ref<string | null>(null)
 
@@ -288,11 +290,7 @@ onMounted(async () => {
     // The training state itself comes back via the pagehide session snapshot instead.
     const redirectRoute = parseCurrentRoute()
     await store.load()
-    if (
-      redirectRoute.view === 'solveProgress' ||
-      redirectRoute.view === 'browseExercises' ||
-      redirectRoute.view === 'settings'
-    ) {
+    if (isStandalonePageView(redirectRoute.view)) {
       if (redirectRoute.view === 'browseExercises') {
         browseInitialCategory.value = redirectRoute.category
       }
@@ -319,11 +317,7 @@ onMounted(async () => {
   const route = parseCurrentRoute()
   suppressUrlUpdate = true
 
-  if (
-    route.view === 'solveProgress' ||
-    route.view === 'browseExercises' ||
-    route.view === 'settings'
-  ) {
+  if (isStandalonePageView(route.view)) {
     await store.load()
     if (route.view === 'browseExercises') browseInitialCategory.value = route.category
     currentView.value = route.view
@@ -410,11 +404,7 @@ function handlePopState(): void {
   suppressUrlUpdate = true
   const route = parseCurrentRoute()
 
-  if (
-    route.view === 'solveProgress' ||
-    route.view === 'browseExercises' ||
-    route.view === 'settings'
-  ) {
+  if (isStandalonePageView(route.view)) {
     if (route.view === 'browseExercises') browseInitialCategory.value = route.category
     currentView.value = route.view
     suppressUrlUpdate = false
@@ -516,6 +506,8 @@ const pageTitle = computed(() => {
       return t((s) => s.profile.browseExercises)
     case 'settings':
       return t((s) => s.profile.settingsTitle)
+    case 'about':
+      return t((s) => s.about.navTitle)
     default:
       return 'Endgame Nirvana'
   }
@@ -880,6 +872,8 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
       />
 
       <SettingsPage v-else-if="currentView === 'settings'" />
+
+      <AboutPage v-else-if="currentView === 'about'" />
 
       <!-- Kept mounted (v-show) while the pages above are shown, so the puzzle in
            progress — board, move history, analysis — survives navigating away and back. -->

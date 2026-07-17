@@ -176,6 +176,31 @@ export const en = {
     emailAlreadyRegistered: 'This email is already registered.',
     logInInstead: 'Log in instead',
     sendResetEmail: 'Reset password via email',
+    setupCompleteTitle: 'Setup completed!',
+    startTraining: 'Start Training',
+  },
+  about: {
+    navTitle: 'About',
+    title: 'What is Endgame Nirvana?',
+    intro:
+      'Endgame Nirvana is about practicing endgame positions against a computer. Practice makes perfect, and actually converting the endgames and learning the intricacies is an absolute necessity. You do not need to find the absolute best (only) moves like in typical tactics puzzles. In Endgame Nirvana there are often multiple moves that work — you continue to play the position as if it was a normal chess game. It only ends once you convert the position correctly (e.g. checkmate for won positions, or holding the draw for drawn positions).',
+    moveSelectionTitle: 'Move Selection',
+    moveSelectionIntro:
+      'Move selection by the computer was programmed to be challenging and varied — not simply the "best engine move" is played:',
+    moveSelectionDefense:
+      "The computer tries to defend in ways that make it harder for you to convert, just like a human would. For example, if you have to defend a drawn king vs king and pawn position, a typical engine will just sacrifice the pawn, because the resulting position is also drawn. Endgame Nirvana will test your king's dancing shoes and make sure you know how to keep that pawn at bay, letting you really learn how to defend against tenacious attacks.",
+    moveSelectionVariety:
+      'The computer varies its moves, picking among several viable defensive variants, so you learn all the different aspects of an endgame. E.g. when practicing a king, bishop and knight vs king endgame, there might be one move for the computer that leads to mate in 14 moves, and another move that leads to mate in 12 moves. The computer will pick randomly between these moves (with a higher emphasis on the longer-lasting mate in 14) — this way you will also learn the alternative "mate in 12" variation when repeating a few times. This gives a much more complete practice: by repeating an endgame a few times you develop a complete picture and really master it in a way that will hold up against human opponents (who will not only play the absolute longest-lasting defensive moves).',
+    openTitle: 'Open and Free',
+    openText:
+      'Endgame Nirvana is open source and completely free. There are no advertisements, no premium version and no hidden financial objectives.',
+    offlineTitle: 'Fully usable offline',
+    offlineIntro:
+      "No internet, no problem. As long as you have opened the page once (or installed the progressive web app), you can practice your endgames — you don't even need to create an account at all. The only functionality that depends on internet access:",
+    offlineTablebase:
+      'The Lichess-powered tablebase look-up is queried online. Without internet you will not see tablebase results.',
+    offlineSync:
+      'If you created an account, your solve progress and Elo will only be synced once you have internet access.',
   },
   profile: {
     retrying: 'Retrying…',

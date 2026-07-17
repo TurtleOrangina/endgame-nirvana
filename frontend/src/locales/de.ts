@@ -182,6 +182,31 @@ export const de: typeof en = {
     emailAlreadyRegistered: 'Diese E-Mail-Adresse ist bereits registriert.',
     logInInstead: 'Stattdessen anmelden',
     sendResetEmail: 'Passwort per E-Mail zurücksetzen',
+    setupCompleteTitle: 'Einrichtung abgeschlossen!',
+    startTraining: 'Training starten',
+  },
+  about: {
+    navTitle: 'Über',
+    title: 'Was ist Endgame Nirvana?',
+    intro:
+      'Bei Endgame Nirvana geht es darum, Endspielstellungen gegen einen Computer zu trainieren. Übung macht den Meister — Endspiele wirklich zu verwerten und ihre Feinheiten zu lernen ist absolut unverzichtbar. Du musst nicht wie bei typischen Taktikaufgaben den absolut besten (einzigen) Zug finden. Bei Endgame Nirvana führen oft mehrere Züge zum Ziel — du spielst die Stellung einfach weiter wie eine normale Schachpartie. Sie endet erst, wenn du die Stellung korrekt verwertet hast (z. B. Matt bei Gewinnstellungen oder das Remis halten bei Remisstellungen).',
+    moveSelectionTitle: 'Zugauswahl',
+    moveSelectionIntro:
+      'Die Zugauswahl des Computers ist bewusst herausfordernd und abwechslungsreich programmiert — es wird nicht einfach der „beste Engine-Zug“ gespielt:',
+    moveSelectionDefense:
+      'Der Computer versucht so zu verteidigen, dass dir die Verwertung möglichst schwer fällt — genau wie ein Mensch. Musst du zum Beispiel eine remis stehende Stellung König gegen König und Bauer verteidigen, opfert eine typische Engine einfach den Bauern, weil die entstehende Stellung ebenfalls remis ist. Endgame Nirvana testet dagegen die Tanzschuhe deines Königs und stellt sicher, dass du den Bauern wirklich aufhalten kannst — so lernst du, dich auch gegen hartnäckige Angriffe zu verteidigen.',
+    moveSelectionVariety:
+      'Der Computer variiert seine Züge und wählt zwischen verschiedenen brauchbaren Verteidigungsvarianten, damit du alle Facetten eines Endspiels kennenlernst. Beim Training eines Endspiels König, Läufer und Springer gegen König gibt es z. B. vielleicht einen Zug des Computers, der zu Matt in 14 Zügen führt, und einen anderen, der zu Matt in 12 Zügen führt. Der Computer wählt zufällig zwischen diesen Zügen (mit stärkerer Gewichtung auf dem länger dauernden Matt in 14) — so lernst du beim mehrmaligen Wiederholen auch die alternative „Matt in 12“-Variante kennen. Das ergibt ein viel vollständigeres Training: Nach ein paar Wiederholungen entwickelst du ein komplettes Bild und beherrschst das Endspiel so, dass es auch gegen menschliche Gegner standhält (die nicht immer nur die am längsten durchhaltenden Verteidigungszüge spielen).',
+    openTitle: 'Offen und kostenlos',
+    openText:
+      'Endgame Nirvana ist Open Source und völlig kostenlos. Es gibt keine Werbung, keine Premium-Version und keine versteckten finanziellen Absichten.',
+    offlineTitle: 'Vollständig offline nutzbar',
+    offlineIntro:
+      'Kein Internet, kein Problem. Sobald du die Seite einmal geöffnet (oder die Progressive Web App installiert) hast, kannst du deine Endspiele trainieren — dafür brauchst du nicht einmal ein Konto. Nur diese Funktionen benötigen eine Internetverbindung:',
+    offlineTablebase:
+      'Die von Lichess bereitgestellte Tablebase-Abfrage erfolgt online. Ohne Internet siehst du keine Tablebase-Ergebnisse.',
+    offlineSync:
+      'Wenn du ein Konto erstellt hast, werden dein Lösungsfortschritt und deine Elo synchronisiert, sobald du eine Internetverbindung hast.',
   },
   profile: {
     retrying: 'Erneuter Versuch…',

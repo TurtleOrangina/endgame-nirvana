@@ -5,13 +5,14 @@ import { useExercisesStore } from '@/stores/exercises'
 import { useAuthStore } from '@/stores/auth'
 import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
+import AboutContent from '@/components/AboutContent.vue'
 import { isValidEmail } from '@/utils/email'
 import type { en } from '@/locales/en'
 
 const DRAFT_STORAGE_KEY = 'setup_modal_draft'
 
 type SetupMode = 'new' | 'signin'
-type NewUserStep = 'basics' | 'lichess' | 'account' | 'confirmation'
+type NewUserStep = 'basics' | 'lichess' | 'account' | 'confirmation' | 'welcome'
 
 interface SetupDraft {
   step: NewUserStep
@@ -177,11 +178,13 @@ const hasAccountDetails = computed(() => email.value.trim().length > 0 && passwo
 // A session can appear without any action in this tab: the email-confirmation link
 // signs the user in wherever it opens, and supabase-js broadcasts the sign-in to
 // every other tab. Once the cloud profile has been pulled, the wizard has nothing
-// left to collect — close it instead of leaving a signed-in user on a signup form.
+// left to collect — new users get the final welcome page, returning users are done.
 watch(
   () => authStore.isSignedIn && userProfileStore.profile !== null,
   (signedInWithProfile) => {
-    if (signedInWithProfile) emit('close')
+    if (!signedInWithProfile) return
+    if (mode.value === 'new') showWelcomePage()
+    else emit('close')
   },
   { immediate: true },
 )
@@ -197,10 +200,15 @@ const headerTitle = computed((): string => {
       : t((s) => s.setup.lichessStepTitle)
   }
   if (step.value === 'account') return t((s) => s.setup.accountStepTitle)
+  if (step.value === 'welcome') return t((s) => s.setup.setupCompleteTitle)
   return t((s) => s.setup.confirmEmailTitle)
 })
 
 const showHeaderSubtitle = computed(() => mode.value === 'signin' || step.value === 'basics')
+
+function showWelcomePage(): void {
+  step.value = 'welcome'
+}
 
 function goToLichessStep(): void {
   if (!username.value.trim()) return
@@ -281,7 +289,7 @@ async function attemptLoginAfterConfirmation(): Promise<void> {
   // supabase-js's cross-tab broadcast, which also clears the stored credentials
   // this retry would use) — there's nothing to log in to then.
   if (authStore.isSignedIn) {
-    emit('close')
+    showWelcomePage()
     return
   }
   isLoggingIn.value = true
@@ -298,7 +306,7 @@ async function attemptLoginAfterConfirmation(): Promise<void> {
   // The SIGNED_IN listener's pullRemoteState is hydrating the profile from the cloud;
   // it also takes care of applying a Lichess account linked earlier in the wizard
   // (see sync.ts), so there's nothing left to persist here.
-  emit('close')
+  showWelcomePage()
 }
 
 function finishSetup(): void {
@@ -319,7 +327,7 @@ function finishSetup(): void {
   if (!authStore.isSignedIn || cloudProfileAlreadyPulled) {
     lichessAuth.applyPendingUsernameToProfile()
   }
-  emit('close')
+  showWelcomePage()
 }
 
 async function submitSignIn(): Promise<void> {
@@ -345,7 +353,7 @@ async function submitSignIn(): Promise<void> {
 
 <template>
   <div class="modal-overlay">
-    <div class="modal">
+    <div class="modal" :class="{ 'modal-welcome': step === 'welcome' }">
       <h2>{{ headerTitle }}</h2>
       <p v-if="showHeaderSubtitle" class="subtitle">
         {{ mode === 'signin' ? t((s) => s.setup.signinSubtitle) : t((s) => s.setup.newSubtitle) }}
@@ -596,6 +604,18 @@ async function submitSignIn(): Promise<void> {
           </button>
         </div>
       </form>
+
+      <div v-else-if="step === 'welcome'" class="form welcome-form">
+        <div class="step-content welcome-content">
+          <AboutContent />
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn-submit" @click="emit('close')">
+            {{ t((s) => s.setup.startTraining) }}
+          </button>
+        </div>
+      </div>
 
       <div v-else class="confirmation-notice">
         <div class="step-content">
@@ -942,6 +962,22 @@ h2 {
 
 .level-description strong {
   color: var(--fg);
+}
+
+/* The welcome text is much longer than any wizard step — pin the dialog to the
+   same 440px the other steps use and let the text scroll inside instead. */
+.modal-welcome {
+  height: 440px;
+}
+
+.welcome-form {
+  min-height: 0;
+}
+
+.welcome-content {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 
 .btn-submit {

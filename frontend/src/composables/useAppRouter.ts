@@ -1,4 +1,18 @@
-export type AppView = 'training' | 'analysis' | 'solveProgress' | 'browseExercises' | 'settings'
+export type AppView =
+  | 'training'
+  | 'analysis'
+  | 'solveProgress'
+  | 'browseExercises'
+  | 'settings'
+  | 'about'
+
+export type StandalonePageView = Exclude<AppView, 'training' | 'analysis'>
+
+// Standalone pages (unlike training/analysis) carry no puzzle fen in their URL and
+// leave the training view mounted-but-hidden underneath.
+export function isStandalonePageView(view: AppView): view is StandalonePageView {
+  return view !== 'training' && view !== 'analysis'
+}
 
 export type LegalPage = 'impressum' | 'datenschutz'
 
@@ -24,6 +38,7 @@ export function parseCurrentRoute(): {
     return { view: 'browseExercises', fen: null, category: params.get('category') }
   }
   if (path === '/settings') return { view: 'settings', fen: null, category: null }
+  if (path === '/about') return { view: 'about', fen: null, category: null }
   if (path === '/analysis') return { view: 'analysis', fen, category: null }
   return { view: 'training', fen, category: null }
 }
@@ -36,6 +51,7 @@ export function buildRouteUrl(
 ): string {
   if (view === 'solveProgress') return '/progress'
   if (view === 'settings') return '/settings'
+  if (view === 'about') return '/about'
   if (view === 'browseExercises') {
     return category ? `/browse?category=${encodeURIComponent(category)}` : '/browse'
   }
