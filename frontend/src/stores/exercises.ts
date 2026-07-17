@@ -350,6 +350,13 @@ export const useExercisesStore = defineStore('exercises', () => {
     if (currentExercise.value === null) selectRandom()
   }
 
+  // The puzzles the 'around' difficulty preference would select, regardless of the user's
+  // actual preference — also the Browse Exercises page's "around my level" filter.
+  const aroundLevelExerciseIds = computed((): Set<string> => {
+    const userElo = useUserProfileStore().profile?.endgameElo ?? 1400
+    return selectAroundBandIds(allExercises.value, userElo)
+  })
+
   // Hard filter applied over the entire exercise pool, before category selection, based on the
   // user's difficultyPreference. The category dropdown, progress counts, and puzzle selection
   // all derive from this, so they stay consistent with each other.
@@ -362,19 +369,19 @@ export const useExercisesStore = defineStore('exercises', () => {
       case 'all':
         return allExercises.value
       case 'aroundAndAbove': {
-        const eligibleIds = selectAroundBandIds(allExercises.value, userElo)
+        const eligibleIds = aroundLevelExerciseIds.value
         return allExercises.value.filter(
           (ex) => eloOf(ex) >= userElo - ELO_BAND || eligibleIds.has(ex.id),
         )
       }
       case 'aroundAndBelow': {
-        const eligibleIds = selectAroundBandIds(allExercises.value, userElo)
+        const eligibleIds = aroundLevelExerciseIds.value
         return allExercises.value.filter(
           (ex) => eloOf(ex) <= userElo + ELO_BAND || eligibleIds.has(ex.id),
         )
       }
       case 'around': {
-        const eligibleIds = selectAroundBandIds(allExercises.value, userElo)
+        const eligibleIds = aroundLevelExerciseIds.value
         return allExercises.value.filter((ex) => eligibleIds.has(ex.id))
       }
     }
@@ -422,14 +429,20 @@ export const useExercisesStore = defineStore('exercises', () => {
     ),
   )
 
-  // Same shape as categoryOptions, but over the entire catalog regardless of difficulty
-  // preference or attempt history — the full category list for the Browse Exercises page.
-  // `attempted` is always 0 here (unused by that page).
-  const catalogCategoryOptions = computed((): CategoryOption[] =>
-    flattenCategoryTree(
-      buildCategoryTreeNodes(allExercises.value, () => false),
+  // Same shape as categoryOptions, but over the catalog exercises matching `matches`,
+  // regardless of difficulty preference or attempt history — the category list for the
+  // Browse Exercises page, whose own filters decide what matches. Categories left without
+  // a single matching puzzle are omitted entirely. `attempted` is always 0 here (unused
+  // by that page).
+  function catalogCategoryOptionsMatching(matches: (exercise: Exercise) => boolean) {
+    return flattenCategoryTree(
+      buildCategoryTreeNodes(allExercises.value.filter(matches), () => false),
       0,
-    ),
+    )
+  }
+
+  const catalogCategoryOptions = computed((): CategoryOption[] =>
+    catalogCategoryOptionsMatching(() => true),
   )
 
   // Exercises in `value`'s category (including descendants), across the entire catalog
@@ -820,6 +833,8 @@ export const useExercisesStore = defineStore('exercises', () => {
     isLoading,
     categoryOptions,
     catalogCategoryOptions,
+    catalogCategoryOptionsMatching,
+    aroundLevelExerciseIds,
     puzzlesInCategory,
     categoryExercises,
     filteredExercises,

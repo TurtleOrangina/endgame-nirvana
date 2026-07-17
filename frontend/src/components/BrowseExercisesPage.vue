@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useExercisesStore, type Exercise } from '@/stores/exercises'
 import { useUserProfileStore } from '@/stores/userProfile'
@@ -17,15 +17,57 @@ const emit = defineEmits<{
 }>()
 
 const exercisesStore = useExercisesStore()
-const { catalogCategoryOptions } = storeToRefs(exercisesStore)
+const { catalogCategoryOptions, aroundLevelExerciseIds } = storeToRefs(exercisesStore)
 const userProfileStore = useUserProfileStore()
 const { profile } = storeToRefs(userProfileStore)
 const { t } = useLocale()
 
+type CompletionFilter = 'all' | 'completed' | 'notCompleted'
+type DifficultyFilter = 'all' | 'aroundMyLevel' | 'belowMyLevel' | 'aboveMyLevel'
+
 const searchQuery = ref('')
+const completionFilter = ref<CompletionFilter>('all')
+const difficultyFilter = ref<DifficultyFilter>('all')
 // Opens the first category by default so the page isn't an empty list on first visit.
 const expandedCategory = ref<string | null>(
   props.initialCategory ?? catalogCategoryOptions.value[0]?.value ?? null,
+)
+
+const pageEl = ref<HTMLElement | null>(null)
+
+// When arriving with a target category (e.g. the one selected for training), bring its
+// row into view — the category list can be long, and the page keeps the prior scroll.
+onMounted(() => {
+  if (!props.initialCategory) return
+  pageEl.value?.querySelector('.category-row.selected')?.scrollIntoView({ block: 'start' })
+})
+
+// Below/above mirror the settings page's too-easy/too-hard split: everything outside the
+// "around my level" pool, on either side of the user's elo.
+function matchesDifficultyFilter(exercise: Exercise): boolean {
+  if (difficultyFilter.value === 'all') return true
+  const isAroundLevel = aroundLevelExerciseIds.value.has(exercise.id)
+  if (difficultyFilter.value === 'aroundMyLevel') return isAroundLevel
+  if (isAroundLevel) return false
+  const userElo = profile.value?.endgameElo ?? 1400
+  const exerciseElo = parseInt(exercise.difficulty)
+  return difficultyFilter.value === 'belowMyLevel' ? exerciseElo < userElo : exerciseElo > userElo
+}
+
+// "Completed" means solved within the same recent-attempt window as the check icons on
+// the puzzle cards, so the filter and the icons always agree.
+function matchesFilters(exercise: Exercise): boolean {
+  if (completionFilter.value !== 'all') {
+    const isCompleted = attemptStatus(exercise) === 'solved'
+    if (isCompleted !== (completionFilter.value === 'completed')) return false
+  }
+  return matchesDifficultyFilter(exercise)
+}
+
+// Category list rebuilt from only the puzzles passing the filters, so counts reflect the
+// filtered pool and categories without a single matching puzzle disappear.
+const filteredCategoryOptions = computed(() =>
+  exercisesStore.catalogCategoryOptionsMatching(matchesFilters),
 )
 
 // Words separated by whitespace are combined with AND, matched against the category's
@@ -33,8 +75,8 @@ const expandedCategory = ref<string | null>(
 // wherever those words fall in the category hierarchy, but not "Knight + Bishop vs King".
 const filteredOptions = computed(() => {
   const terms = searchQuery.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
-  if (terms.length === 0) return catalogCategoryOptions.value
-  return catalogCategoryOptions.value.filter((opt) => {
+  if (terms.length === 0) return filteredCategoryOptions.value
+  return filteredCategoryOptions.value.filter((opt) => {
     const haystack = opt.value.toLowerCase()
     return terms.every((term) => haystack.includes(term))
   })
@@ -45,7 +87,9 @@ function toggleCategory(value: string): void {
 }
 
 const expandedPuzzles = computed((): Exercise[] =>
-  expandedCategory.value ? exercisesStore.puzzlesInCategory(expandedCategory.value) : [],
+  expandedCategory.value
+    ? exercisesStore.puzzlesInCategory(expandedCategory.value).filter(matchesFilters)
+    : [],
 )
 
 function eloBandClass(exercise: Exercise): string {
@@ -59,10 +103,23 @@ function attemptStatus(exercise: Exercise): 'solved' | 'failed' | null {
 function onPuzzleClick(exercise: Exercise): void {
   emit('load-puzzle', { exerciseId: exercise.id, transformCode: '' })
 }
+
+const completionFilterOptions = computed((): { value: CompletionFilter; label: string }[] => [
+  { value: 'all', label: t((s) => s.profile.browseFilterShowAll) },
+  { value: 'completed', label: t((s) => s.profile.browseFilterOnlyCompleted) },
+  { value: 'notCompleted', label: t((s) => s.profile.browseFilterOnlyNotCompleted) },
+])
+
+const difficultyFilterOptions = computed((): { value: DifficultyFilter; label: string }[] => [
+  { value: 'all', label: t((s) => s.profile.browseFilterShowAll) },
+  { value: 'aroundMyLevel', label: t((s) => s.profile.browseFilterOnlyAroundMyLevel) },
+  { value: 'belowMyLevel', label: t((s) => s.profile.browseFilterOnlyBelowMyLevel) },
+  { value: 'aboveMyLevel', label: t((s) => s.profile.browseFilterOnlyAboveMyLevel) },
+])
 </script>
 
 <template>
-  <div class="browse-page">
+  <div ref="pageEl" class="browse-page">
     <input
       v-model="searchQuery"
       type="search"
@@ -70,8 +127,39 @@ function onPuzzleClick(exercise: Exercise): void {
       :placeholder="t((s) => s.profile.searchCategoriesPlaceholder)"
     />
 
+    <div class="filter-bar">
+      <label class="filter-field">
+        <span class="filter-label">{{ t((s) => s.profile.browseFilterCompletionLabel) }}</span>
+        <select v-model="completionFilter" class="filter-select">
+          <option
+            v-for="option in completionFilterOptions"
+            :key="option.value"
+            :value="option.value"
+          >
+            {{ option.label }}
+          </option>
+        </select>
+      </label>
+      <label class="filter-field">
+        <span class="filter-label">{{ t((s) => s.profile.browseFilterDifficultyLabel) }}</span>
+        <select v-model="difficultyFilter" class="filter-select">
+          <option
+            v-for="option in difficultyFilterOptions"
+            :key="option.value"
+            :value="option.value"
+          >
+            {{ option.label }}
+          </option>
+        </select>
+      </label>
+    </div>
+
     <p v-if="filteredOptions.length === 0" class="empty">
-      {{ t((s) => s.profile.noCategoriesMatchSearch) }}
+      {{
+        searchQuery.trim()
+          ? t((s) => s.profile.noCategoriesMatchSearch)
+          : t((s) => s.profile.noCategoriesMatchFilters)
+      }}
     </p>
 
     <div v-else class="category-list">
@@ -162,6 +250,39 @@ function onPuzzleClick(exercise: Exercise): void {
   border-color: var(--accent);
 }
 
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+
+.filter-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.filter-label {
+  color: var(--muted);
+}
+
+.filter-select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.filter-select:focus {
+  border-color: var(--accent);
+}
+
 .empty {
   font-size: 0.875rem;
   color: var(--muted);
@@ -174,6 +295,8 @@ function onPuzzleClick(exercise: Exercise): void {
 }
 
 .category-row {
+  /* Breathing room above the row when it's scrolled to as the initial category. */
+  scroll-margin-top: 0.75rem;
   display: flex;
   align-items: center;
   padding: 0.5rem;

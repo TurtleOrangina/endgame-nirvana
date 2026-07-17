@@ -822,8 +822,14 @@ function navigateToView(view: MainView, category: string | null = null): void {
     navigateToTraining()
     return
   }
-  if (view === 'browseExercises') browseInitialCategory.value = category
-  history.pushState(null, '', buildRouteUrl(view, undefined, category))
+  // Opening Browse Exercises without an explicit target category falls back to the one
+  // currently selected for training, so it comes up expanded and scrolled into view.
+  if (view === 'browseExercises') browseInitialCategory.value = category ?? selectedCategory.value
+  history.pushState(
+    null,
+    '',
+    buildRouteUrl(view, undefined, view === 'browseExercises' ? browseInitialCategory.value : null),
+  )
   currentView.value = view
 }
 
