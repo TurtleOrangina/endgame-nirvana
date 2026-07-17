@@ -167,6 +167,40 @@ export function useMoveSelector() {
     return null
   }
 
+  // Position identity for repetition detection: piece placement, side to move, castling
+  // rights and en passant square — the move counters don't matter, as in the threefold rule
+  function positionKey(fen: string): string {
+    return fen.split(' ').slice(0, 4).join(' ')
+  }
+
+  function collectSeenPositionKeys(startFen: string, moves: string[]): Set<string> {
+    const chess = new Chess(startFen)
+    const keys = new Set([positionKey(chess.fen())])
+    for (const uci of moves) {
+      try {
+        chess.move(uciToMoveArgs(uci))
+      } catch {
+        break
+      }
+      keys.add(positionKey(chess.fen()))
+    }
+    return keys
+  }
+
+  function moveRepeatsSeenPosition(
+    currentFen: string,
+    uci: string,
+    seenPositionKeys: Set<string>,
+  ): boolean {
+    try {
+      const chess = new Chess(currentFen)
+      chess.move(uciToMoveArgs(uci))
+      return seenPositionKeys.has(positionKey(chess.fen()))
+    } catch {
+      return false
+    }
+  }
+
   function computeDistanceToDone(
     line: EngineLine,
     currentFen: string,
@@ -388,6 +422,18 @@ export function useMoveSelector() {
       }
       outcomeWithBestUserPlay = engineOutcome
       candidates = lines.filter((l) => scoreToOutcome(l.scoreCP, l.scoreMate) === engineOutcome)
+    }
+
+    // When lost, prefer moves that recreate a position already seen in this game: the
+    // sampling otherwise lets the user shuffle back to the same position and fish for an
+    // easier reply — repeating instead forces them to punish the same move again (and
+    // walks toward a threefold draw if they keep stalling)
+    if (outcomeWithBestUserPlay === 'loss') {
+      const seenPositionKeys = collectSeenPositionKeys(startFen, moves)
+      const repeatingCandidates = candidates.filter((line) =>
+        moveRepeatsSeenPosition(currentFen, line.moves[0]!, seenPositionKeys),
+      )
+      if (repeatingCandidates.length > 0) candidates = repeatingCandidates
     }
 
     const halfmoveClock = Number(currentFen.split(' ')[4]) || 0
