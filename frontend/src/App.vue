@@ -17,6 +17,11 @@ import {
 } from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
 import { playerPiecesSortedByValue, type PieceName } from '@/utils/chess'
+import {
+  clearTrainingSnapshot,
+  saveTrainingSnapshot,
+  takeTrainingSnapshot,
+} from '@/utils/trainingSessionState'
 import LegalPage from '@/components/LegalPage.vue'
 import { useWakeLock } from '@/composables/useWakeLock'
 import ChessBoard from '@/components/ChessBoard.vue'
@@ -71,7 +76,8 @@ const currentBoardFen = computed(
 )
 // The FEN used in URLs — always the puzzle's original fen, with underscores for the
 // URL, regardless of which transformation is currently displayed. This is what lets
-// a fresh page load re-roll a random orientation while the URL itself stays stable.
+// a fresh page load (in a new tab, without a session snapshot to restore — see
+// restoreSavedTrainingState) re-roll a random orientation while the URL stays stable.
 const currentRawFen = computed(() => currentExercise.value?.fen.replaceAll(' ', '_') ?? null)
 const shareUrl = computed(() =>
   currentRawFen.value
@@ -188,12 +194,76 @@ watch(
   { flush: 'sync' },
 )
 
+// Written on pagehide so the training page survives full page loads in the same tab —
+// most importantly the Lichess OAuth link flow, which navigates to lichess.org and back.
+function persistTrainingState(): void {
+  const exercise = currentExercise.value
+  const board = boardRef.value
+  if (!exercise || !board) {
+    clearTrainingSnapshot()
+    return
+  }
+  saveTrainingSnapshot({
+    exerciseId: exercise.id,
+    transformCode: store.currentTransformCode,
+    puzzleStatus: puzzleStatus.value,
+    isAnalysisMode: isAnalysisMode.value,
+    board: board.getBoardSnapshot(),
+  })
+}
+
+// Restores the training page "as you left it" from the pagehide snapshot: same puzzle in
+// the same orientation, same move history, same rated/retry status and analysis mode.
+// A ?puzzle= URL for a *different* puzzle (e.g. a shared link pasted into this tab) wins
+// over the snapshot. Returns whether the snapshot was applied.
+async function restoreSavedTrainingState(requestedFen: string | null = null): Promise<boolean> {
+  const snapshot = takeTrainingSnapshot()
+  if (!snapshot) return false
+  const requestedId = requestedFen?.replaceAll('_', ' ') ?? null
+  if (requestedId && requestedId !== snapshot.exerciseId) return false
+  if (!store.exerciseById(snapshot.exerciseId)) return false
+
+  store.selectByIdWithTransform(snapshot.exerciseId, snapshot.transformCode)
+  puzzleStatus.value = snapshot.puzzleStatus
+  isWrongSolution.value =
+    snapshot.board.entries
+      .slice(0, snapshot.board.index + 1)
+      .reverse()
+      .find((entry) => entry.isOutsideGoal !== undefined)?.isOutsideGoal ?? false
+
+  await nextTick()
+  const board = boardRef.value
+  if (board) {
+    if (snapshot.isAnalysisMode) {
+      isAnalysisMode.value = true
+      const paused = profile.value?.analysisEnginePaused ?? false
+      analysisPaused.value = paused
+      analysisTablebaseExpanded.value = profile.value?.tablebaseMovesExpanded ?? false
+      board.restoreBoardSnapshot(snapshot.board, { active: true, paused })
+    } else {
+      board.restoreBoardSnapshot(snapshot.board, { active: false, paused: false })
+    }
+  }
+  return true
+}
+
+// The training view is hidden with v-show while other pages are shown, so the board
+// stays mounted — but the window may be resized in the meantime, and Chessground caches
+// its pixel bounds. Re-measure whenever the view becomes visible again.
+watch(currentView, (view) => {
+  if (view === 'training') {
+    nextTick(() => boardRef.value?.redraw()).catch(() => undefined)
+  }
+})
+
 onMounted(async () => {
   const legalPage = matchLegalRoute(window.location.pathname)
   if (legalPage) {
     currentView.value = legalPage
     return
   }
+
+  window.addEventListener('pagehide', persistTrainingState)
 
   // Deliberately not awaited: with a signed-in session whose access token has
   // expired, init() refreshes it over the network inside getSession(), which can
@@ -215,13 +285,14 @@ onMounted(async () => {
     // The OAuth redirect_uri deliberately omits the original query string (see
     // useLichessAuth's startLinkFlow), so any puzzle fen is already gone by this point —
     // only the pathname (which view to return to) survives the round trip to Lichess.
+    // The training state itself comes back via the pagehide session snapshot instead.
     const redirectRoute = parseCurrentRoute()
+    await store.load()
     if (
       redirectRoute.view === 'solveProgress' ||
       redirectRoute.view === 'browseExercises' ||
       redirectRoute.view === 'settings'
     ) {
-      await store.load()
       if (redirectRoute.view === 'browseExercises') {
         browseInitialCategory.value = redirectRoute.category
       }
@@ -231,9 +302,14 @@ onMounted(async () => {
         '',
         buildRouteUrl(redirectRoute.view, undefined, redirectRoute.category),
       )
+      await restoreSavedTrainingState()
     } else {
-      await store.load()
-      history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
+      await restoreSavedTrainingState()
+      history.replaceState(
+        null,
+        '',
+        buildRouteUrl(isAnalysisMode.value ? 'analysis' : 'training', currentRawFen.value),
+      )
     }
     suppressUrlUpdate = false
     window.addEventListener('popstate', handlePopState)
@@ -252,13 +328,17 @@ onMounted(async () => {
     if (route.view === 'browseExercises') browseInitialCategory.value = route.category
     currentView.value = route.view
     history.replaceState(null, '', buildRouteUrl(route.view, undefined, route.category))
+    await restoreSavedTrainingState()
   } else {
     await store.load(route.fen ?? undefined)
-    const exercise = currentExercise.value
-    if (route.view === 'analysis' && exercise && store.hasSolvedRecently(exercise.id)) {
-      isAnalysisMode.value = true
-      await nextTick()
-      startAnalysisMode()
+    const restored = await restoreSavedTrainingState(route.fen)
+    if (!restored) {
+      const exercise = currentExercise.value
+      if (route.view === 'analysis' && exercise && store.hasSolvedRecently(exercise.id)) {
+        isAnalysisMode.value = true
+        await nextTick()
+        startAnalysisMode()
+      }
     }
     if (currentExercise.value) {
       history.replaceState(
@@ -275,6 +355,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('popstate', handlePopState)
+  window.removeEventListener('pagehide', persistTrainingState)
   systemThemeQuery.removeEventListener('change', applySystemTheme)
   clearTimeout(linkCopiedTimeout)
 })
@@ -725,24 +806,22 @@ function selectCategoryFromChip(depth: number): void {
 }
 
 function navigateToTraining(): void {
-  history.pushState(null, '', buildRouteUrl('training', currentRawFen.value))
+  history.pushState(
+    null,
+    '',
+    buildRouteUrl(isAnalysisMode.value ? 'analysis' : 'training', currentRawFen.value),
+  )
   currentView.value = 'training'
 }
 
-// Navigating away from training unmounts ChessBoard entirely (see the v-else-if chain
-// in the template), which resets its own analysis state on remount — but App's isAnalysisMode
-// and analysis panel state must be reset here too, or returning to training would show the
-// analysis sidebar over a freshly non-analysis board.
+// The training view stays mounted (hidden via v-show) while other pages are shown, so
+// the puzzle — including a retry in progress or an open analysis — continues exactly
+// where it was when navigating back.
 function navigateToView(view: MainView, category: string | null = null): void {
   if (view === 'training') {
     navigateToTraining()
     return
   }
-  isAnalysisMode.value = false
-  analysisPaused.value = false
-  analysisLines.value = []
-  analysisTablebase.value = null
-  analysisFen.value = ''
   if (view === 'browseExercises') browseInitialCategory.value = category
   history.pushState(null, '', buildRouteUrl(view, undefined, category))
   currentView.value = view
@@ -796,10 +875,12 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
 
       <SettingsPage v-else-if="currentView === 'settings'" />
 
-      <div v-else-if="isLoading" class="loading">{{ t((s) => s.app.loadingExercises) }}</div>
+      <!-- Kept mounted (v-show) while the pages above are shown, so the puzzle in
+           progress — board, move history, analysis — survives navigating away and back. -->
+      <div v-show="currentView === 'training'" class="training-view">
+        <div v-if="isLoading" class="loading">{{ t((s) => s.app.loadingExercises) }}</div>
 
-      <template v-else>
-        <div class="layout two-col">
+        <div v-else class="layout two-col">
           <section class="board-area">
             <div v-if="currentExercise" class="board-wrap">
               <ChessBoard
@@ -1223,7 +1304,7 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
             </template>
           </div>
         </div>
-      </template>
+      </div>
     </div>
   </div>
 </template>
@@ -1323,6 +1404,14 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 1.25rem;
+}
+
+.training-view {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .layout {

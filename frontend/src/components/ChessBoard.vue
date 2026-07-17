@@ -18,6 +18,7 @@ import { isOutsidePuzzleGoal } from '@/utils/puzzleEvaluation'
 import { isBareKingVsMajorPiece, MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON } from '@/utils/chess'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useExercisesStore } from '@/stores/exercises'
+import type { BoardHistoryEntry, BoardSnapshot } from '@/utils/trainingSessionState'
 import type {
   GameResult,
   PlayerColor,
@@ -29,18 +30,12 @@ import type {
 
 type PromotionPiece = 'q' | 'r' | 'n' | 'b'
 
-interface HistoryEntry {
-  fen: string
-  lastMove?: [Key, Key]
-  movedBy: 'player' | 'engine' | null
-  uciMove?: string
-  movesSinceZero: number
-  sound: BoardSound
-  // Goal verdict of this position once evaluated (player-move positions and game ends);
-  // undefined = never directly evaluated — such positions inherit the verdict of the
-  // nearest evaluated position before them (see displayedIsOutsideGoal).
-  isOutsideGoal?: boolean
-}
+// Shape lives in trainingSessionState.ts so the whole history can be serialized into a
+// session snapshot as-is. On isOutsideGoal: it's the goal verdict of a position once
+// evaluated (player-move positions and game ends); undefined = never directly evaluated —
+// such positions inherit the verdict of the nearest evaluated position before them
+// (see displayedIsOutsideGoal).
+type HistoryEntry = BoardHistoryEntry
 
 interface PendingPromotion {
   dest: Key
@@ -579,13 +574,13 @@ function canResumeFromHistory(): boolean {
 // When stepping back, the move being undone is the one recorded on the entry we're
 // leaving, so its sound is passed in via `undoneEntry`; when stepping forward, the
 // replayed move is the one recorded on the entry we land on.
-function showHistoryPosition(undoneEntry?: HistoryEntry): void {
+function showHistoryPosition(undoneEntry?: HistoryEntry, playSound = true): void {
   if (!cg || !chess) return
   const entry = historyEntries.value[historyIndex.value]
   if (!entry) return
 
   const soundSource = undoneEntry ?? entry
-  if (soundSource.lastMove) {
+  if (playSound && soundSource.lastMove) {
     boardAudio.play(soundSource.sound)
   }
 
@@ -1187,6 +1182,9 @@ async function playBestMove(): Promise<void> {
 
 function onKeyDown(e: KeyboardEvent): void {
   if (!cg) return
+  // The training view stays mounted (v-show) while other pages are shown — board
+  // shortcuts must not fire while the board isn't visible (display:none => null here).
+  if (boardEl.value?.offsetParent === null) return
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
   if (e.key === 'ArrowLeft') {
     e.preventDefault()
@@ -1262,6 +1260,65 @@ function leaveAnalysisMode(): void {
   void triggerEngineTurn(gen)
 }
 
+function getBoardSnapshot(): BoardSnapshot {
+  return {
+    entries: historyEntries.value.map((entry) => ({ ...entry })),
+    index: historyIndex.value,
+    isGameOver: isGameOver.value,
+    gameOverEntryBeforeAnalysis,
+  }
+}
+
+// Rebuilds the board exactly as captured by getBoardSnapshot before a full page load
+// (e.g. the Lichess OAuth link flow's round trip): full move history, viewed position,
+// game-over state and analysis mode. If the snapshot was taken between the player's
+// move and the computer's reply, the reply is re-triggered so the game doesn't hang —
+// in that case the latest position is shown even if history was being browsed, since
+// the incoming reply would yank the view there anyway.
+function restoreBoardSnapshot(
+  snapshot: BoardSnapshot,
+  analysis: { active: boolean; paused: boolean },
+): void {
+  const startFen = snapshot.entries[0]?.fen
+  if (!startFen) return
+  setupBoard(startFen)
+  if (!chess || !cg) return
+
+  historyEntries.value = snapshot.entries.map((entry) => ({ ...entry }))
+  isGameOver.value = snapshot.isGameOver
+  gameOverEntryBeforeAnalysis = snapshot.gameOverEntryBeforeAnalysis
+  if (analysis.active) {
+    isAnalysisMode.value = true
+    analysisPaused.value = analysis.paused
+  }
+
+  const lastEntry = historyEntries.value[historyEntries.value.length - 1]
+  const engineReplyPending =
+    !analysis.active &&
+    !snapshot.isGameOver &&
+    !!lastEntry &&
+    toColor(new Chess(lastEntry.fen).turn()) !== playerColor
+  historyIndex.value = engineReplyPending
+    ? historyEntries.value.length - 1
+    : Math.min(Math.max(snapshot.index, 0), historyEntries.value.length - 1)
+
+  showHistoryPosition(undefined, false)
+
+  if (!engineReplyPending || !chess || !cg) return
+  cg.set({
+    turnColor: toColor(chess.turn()),
+    movable: { color: playerColor, free: false, dests: new Map() },
+  })
+  isWaitingForEngineReply.value = true
+  void triggerEngineTurn(moveGeneration)
+}
+
+// Chessground caches the board's pixel bounds; if the window is resized while the
+// training view is hidden (v-show), those go stale — re-measure when it's shown again.
+function redraw(): void {
+  cg?.redrawAll()
+}
+
 function loadFen(fen: string): boolean {
   if (!boardEl.value) return false
   let parsed: Chess
@@ -1314,6 +1371,9 @@ defineExpose({
   enterAnalysisMode,
   leaveAnalysisMode,
   loadFen,
+  getBoardSnapshot,
+  restoreBoardSnapshot,
+  redraw,
   makeMove,
   showMoveArrow,
   setAnalysisPaused,
