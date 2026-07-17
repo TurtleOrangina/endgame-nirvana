@@ -18,6 +18,7 @@ export const de: typeof en = {
     analysisTitle: 'Analyse',
     youPlayWhite: 'Du spielst Weiß',
     youPlayBlack: 'Du spielst Schwarz',
+    versus: 'vs',
     surrender: 'Aufgeben',
     surrenderTitle: 'Diese Aufgabe aufgeben',
     takeBack: 'Zug zurück',

@@ -396,15 +396,23 @@ const boardTitle = computed(() => {
   return 'Endgame Nirvana'
 })
 
-// The player's starting material, shown as small board-piece sprites after the
-// "You play white/black" header title on the training view.
-const titlePieces = computed<{ color: 'white' | 'black'; pieces: PieceName[] } | null>(() => {
+// The starting material of both sides, shown as "player pieces vs computer pieces"
+// board-piece sprites in place of the header title on the training view (falling
+// back to the plain "You play white/black" title when there is no room — see AppHeader).
+const titleVersusPieces = computed<{
+  player: { color: 'white' | 'black'; pieces: PieceName[] }
+  opponent: { color: 'white' | 'black'; pieces: PieceName[] }
+} | null>(() => {
   if (currentView.value !== 'training' || isAnalysisMode.value) return null
   if (!profile.value || !currentExercise.value) return null
   const fen = currentBoardFen.value
   if (!fen) return null
-  const color = (fen.split(' ')[1] ?? 'w') === 'w' ? 'white' : 'black'
-  return { color, pieces: playerPiecesSortedByValue(fen, color) }
+  const playerColor = (fen.split(' ')[1] ?? 'w') === 'w' ? 'white' : 'black'
+  const opponentColor = playerColor === 'white' ? 'black' : 'white'
+  return {
+    player: { color: playerColor, pieces: playerPiecesSortedByValue(fen, playerColor) },
+    opponent: { color: opponentColor, pieces: playerPiecesSortedByValue(fen, opponentColor) },
+  }
 })
 
 // AppHeader is only ever rendered outside the impressum/datenschutz branch (see template),
@@ -768,7 +776,7 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
     <div v-else class="page">
       <AppHeader
         :title="pageTitle"
-        :title-pieces="titlePieces"
+        :versus-pieces="titleVersusPieces"
         :active-view="headerActiveView"
         :username="profile?.username ?? null"
         @navigate="navigateToView"

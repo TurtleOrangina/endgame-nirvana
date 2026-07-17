@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useLocale } from '@/composables/useLocale'
 import type { AppView } from '@/composables/useAppRouter'
 import type { PieceName } from '@/utils/chess'
 import NavIcon from '@/components/NavIcon.vue'
 
 type NavView = Exclude<AppView, 'analysis'>
+type SidePieces = { color: 'white' | 'black'; pieces: PieceName[] }
 
 const props = defineProps<{
   title: string
-  titlePieces?: { color: 'white' | 'black'; pieces: PieceName[] } | null
+  versusPieces?: { player: SidePieces; opponent: SidePieces } | null
   activeView: NavView
   username: string | null
 }>()
@@ -42,21 +43,74 @@ function onNavigate(view: NavView): void {
   if (dropdownRef.value) dropdownRef.value.open = false
   if (view !== props.activeView) emit('navigate', view)
 }
+
+const versusSides = computed<SidePieces[]>(() =>
+  props.versusPieces ? [props.versusPieces.player, props.versusPieces.opponent] : [],
+)
+
+// Whether the "player pieces vs computer pieces" title fits the header row. While it
+// doesn't fit, the versus title stays rendered but absolutely positioned and invisible,
+// so its full width can still be measured against the row and the plain text title is
+// shown instead. Starts false so a too-wide versus title never flashes before the
+// first measurement.
+const versusFits = ref(false)
+const titleRowRef = ref<HTMLElement | null>(null)
+const versusTitleRef = ref<HTMLElement | null>(null)
+
+function measureVersusFit(): void {
+  const row = titleRowRef.value
+  const versusTitle = versusTitleRef.value
+  if (!row || !versusTitle) return
+  versusFits.value = versusTitle.scrollWidth <= row.clientWidth
+}
+
+let titleRowResizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  titleRowResizeObserver = new ResizeObserver(measureVersusFit)
+  if (titleRowRef.value) titleRowResizeObserver.observe(titleRowRef.value)
+})
+
+onUnmounted(() => {
+  titleRowResizeObserver?.disconnect()
+})
+
+watch(
+  () => props.versusPieces,
+  async () => {
+    await nextTick()
+    measureVersusFit()
+  },
+)
 </script>
 
 <template>
   <div class="app-header" :class="{ wide: activeView === 'training' }">
     <div class="header-left">
       <NavIcon :icon="activeIcon" class="title-icon" />
-      <span class="title-row">
-        <span class="board-title">{{ title }}</span>
-        <span v-if="titlePieces" class="title-pieces cg-wrap">
-          <piece
-            v-for="(pieceName, index) in titlePieces.pieces"
-            :key="index"
-            :class="[titlePieces.color, pieceName]"
-          />
+      <span ref="titleRowRef" class="title-row">
+        <span
+          v-if="versusPieces"
+          ref="versusTitleRef"
+          class="versus-title"
+          :class="{ measuring: !versusFits }"
+          :aria-label="title"
+          role="img"
+        >
+          <template v-for="(side, sideIndex) in versusSides" :key="side.color">
+            <span v-if="sideIndex > 0" class="versus-separator">
+              {{ t((s) => s.app.versus) }}
+            </span>
+            <span class="title-pieces cg-wrap">
+              <piece
+                v-for="(pieceName, index) in side.pieces"
+                :key="index"
+                :class="[side.color, pieceName]"
+              />
+            </span>
+          </template>
         </span>
+        <span v-if="!versusPieces || !versusFits" class="board-title">{{ title }}</span>
       </span>
     </div>
 
@@ -130,24 +184,41 @@ function onNavigate(view: NavView): void {
   color: var(--accent);
 }
 
-/* Shows the piece figurines only when they fit next to the title: the row is a
-   flex-wrap container clipped to a single line, so when there isn't enough width
-   the pieces wrap onto a second line that the max-height/overflow hides entirely
-   (the generous row-gap guarantees the wrapped line starts below the clip edge).
-   The title itself is always on the first line, where it can still shrink and
-   ellipsize as before. */
 .title-row {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  column-gap: 0.5rem;
-  row-gap: 1rem;
-  /* One row: tall enough for the 28px pieces badge, or the title's own line
-     height when the user's base font size is larger. */
-  max-height: max(28px, 1.7rem);
+  /* Constant height whichever title variant is shown: tall enough for the 28px
+     pieces badges, or the text title's own line height when the user's base
+     font size is larger. */
+  min-height: max(28px, 1.7rem);
+}
+
+.versus-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   overflow: hidden;
+}
+
+/* Kept rendered while it doesn't fit so measureVersusFit can still read its full
+   width: taken out of flow and hidden, with the chips refusing to shrink so
+   scrollWidth reports the width the versus title would actually need. */
+.versus-title.measuring {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.versus-separator {
+  flex-shrink: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--accent);
 }
 
 .board-title {

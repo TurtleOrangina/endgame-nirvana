@@ -16,6 +16,7 @@ export const en = {
     analysisTitle: 'Analysis',
     youPlayWhite: 'You play white',
     youPlayBlack: 'You play black',
+    versus: 'vs',
     surrender: 'Surrender',
     surrenderTitle: 'Give up this puzzle',
     takeBack: 'Take back',
