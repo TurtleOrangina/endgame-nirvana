@@ -22,7 +22,7 @@ const userProfileStore = useUserProfileStore()
 const { profile } = storeToRefs(userProfileStore)
 const { t } = useLocale()
 
-type CompletionFilter = 'all' | 'completed' | 'notCompleted'
+type CompletionFilter = 'all' | 'completed' | 'solved' | 'failed' | 'notCompleted'
 type DifficultyFilter = 'all' | 'aroundMyLevel' | 'belowMyLevel' | 'aboveMyLevel'
 
 const searchQuery = ref('')
@@ -54,14 +54,23 @@ function matchesDifficultyFilter(exercise: Exercise): boolean {
   return difficultyFilter.value === 'belowMyLevel' ? exerciseElo < userElo : exerciseElo > userElo
 }
 
-// "Completed" means solved within the same recent-attempt window as the check icons on
-// the puzzle cards, so the filter and the icons always agree.
-function matchesFilters(exercise: Exercise): boolean {
-  if (completionFilter.value !== 'all') {
-    const isCompleted = attemptStatus(exercise) === 'solved'
-    if (isCompleted !== (completionFilter.value === 'completed')) return false
+// "Completed" means attempted (solved or failed) within the same recent-attempt window
+// as the check/cross icons on the puzzle cards, so the filter and the icons always agree.
+function matchesCompletionFilter(exercise: Exercise): boolean {
+  if (completionFilter.value === 'all') return true
+  const status = attemptStatus(exercise)
+  switch (completionFilter.value) {
+    case 'completed':
+      return status !== null
+    case 'notCompleted':
+      return status === null
+    default:
+      return status === completionFilter.value
   }
-  return matchesDifficultyFilter(exercise)
+}
+
+function matchesFilters(exercise: Exercise): boolean {
+  return matchesCompletionFilter(exercise) && matchesDifficultyFilter(exercise)
 }
 
 // Category list rebuilt from only the puzzles passing the filters, so counts reflect the
@@ -107,6 +116,8 @@ function onPuzzleClick(exercise: Exercise): void {
 const completionFilterOptions = computed((): { value: CompletionFilter; label: string }[] => [
   { value: 'all', label: t((s) => s.profile.browseFilterShowAll) },
   { value: 'completed', label: t((s) => s.profile.browseFilterOnlyCompleted) },
+  { value: 'solved', label: t((s) => s.profile.browseFilterOnlySolved) },
+  { value: 'failed', label: t((s) => s.profile.browseFilterOnlyFailed) },
   { value: 'notCompleted', label: t((s) => s.profile.browseFilterOnlyNotCompleted) },
 ])
 
@@ -281,6 +292,30 @@ const difficultyFilterOptions = computed((): { value: DifficultyFilter; label: s
 
 .filter-select:focus {
   border-color: var(--accent);
+}
+
+/* When the fields would wrap onto separate lines, align the selects in a shared
+   column instead of letting each start after its differently-sized label. Must come
+   after the base .filter-field/.filter-select rules to win the cascade. */
+@media (max-width: 560px) {
+  .filter-bar {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.5rem 0.75rem;
+  }
+
+  .filter-field {
+    display: contents;
+  }
+
+  .filter-label {
+    align-self: center;
+  }
+
+  .filter-select {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .empty {

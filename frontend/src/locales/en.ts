@@ -248,6 +248,8 @@ export const en = {
     browseFilterDifficultyLabel: 'Difficulty',
     browseFilterShowAll: 'Show all',
     browseFilterOnlyCompleted: 'Only completed',
+    browseFilterOnlySolved: 'Only solved',
+    browseFilterOnlyFailed: 'Only failed',
     browseFilterOnlyNotCompleted: 'Only not completed',
     browseFilterOnlyAroundMyLevel: 'Only around my level',
     browseFilterOnlyBelowMyLevel: 'Only below my level',
