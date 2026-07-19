@@ -11,11 +11,14 @@ import {
 } from '@/composables/useStockfishEngine'
 import { useBoardAudio, type BoardSound } from '@/composables/useBoardAudio'
 import { useLichessTablebase } from '@/composables/useLichessTablebase'
-import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
 import { useMoveSelector, type MoveSelectionResult } from '@/composables/useMoveSelector'
 import { isOutsidePuzzleGoal } from '@/utils/puzzleEvaluation'
-import { isBareKingVsMajorPiece, MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON } from '@/utils/chess'
+import {
+  hasPawnsOnBoard,
+  isBareKingVsMajorPiece,
+  MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON,
+} from '@/utils/chess'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useExercisesStore } from '@/stores/exercises'
 import type { BoardHistoryEntry, BoardSnapshot } from '@/utils/trainingSessionState'
@@ -53,8 +56,9 @@ const PROMOTION_OPTIONS: {
   { piece: 'b', name: 'bishop' },
 ]
 
-const TEMPERATURE_RATED = 0.35 // in rated trys the engine defends more accurately
-const TEMPERATURE_RETRY = 0.6 // on retrys more variance is accepted, to see more variations
+const TEMPERATURE = 0.2 // the engine defends accurately
+// On pawnless retrys more variance is accepted, to see more variations
+const TEMPERATURE_PAWNLESS_RETRY = 0.6
 
 // User-drawn arrows/marked squares are coloured by the modifier key held when the
 // right-click drag starts: none = blue, Alt = red, Ctrl = green, Shift = yellow.
@@ -104,7 +108,6 @@ const engine = useStockfishEngine()
 const boardAudio = useBoardAudio()
 const { t } = useLocale()
 const tablebase = useLichessTablebase()
-const lichessAuth = useLichessAuth()
 const moveSelector = useMoveSelector()
 
 const historyEntries = ref<HistoryEntry[]>([])
@@ -370,7 +373,7 @@ function shouldAutoSolve(
 }
 
 function shouldQueryTablebase(fen: string): boolean {
-  return lichessAuth.isLinked.value && countPieces(fen) <= 8
+  return countPieces(fen) <= 8
 }
 
 const bestEngineMoveUci = ref<string | null>(null)
@@ -996,11 +999,13 @@ async function triggerEngineTurn(gen: number, isPremove = false): Promise<void> 
   const currentFen = chess.fen()
   const { fen: startFen, moves } = getPositionArgs()
   const selection = await moveSelector.getBestMove(startFen, moves, currentFen, {
-    temperature: props.isRatedAttempt ? TEMPERATURE_RATED : TEMPERATURE_RETRY,
+    temperature:
+      !props.isRatedAttempt && !hasPawnsOnBoard(currentFen)
+        ? TEMPERATURE_PAWNLESS_RETRY
+        : TEMPERATURE,
     isPremove,
     playerColor,
     queryTablebase: shouldQueryTablebase(currentFen),
-    userElo: useUserProfileStore().profile?.endgameElo ?? 0,
     shouldAbort: () => moveGeneration !== gen,
   })
 

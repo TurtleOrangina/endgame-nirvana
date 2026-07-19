@@ -383,6 +383,15 @@ watch(
   { immediate: true },
 )
 
+// While no profile exists yet the engine's own default (physical-core estimate) applies.
+watch(
+  () => profile.value?.engineThreads,
+  (threads) => {
+    if (threads !== undefined) engine.setThreadCount(threads)
+  },
+  { immediate: true },
+)
+
 // Enters analysis mode for the current exercise if the route asks for it and the puzzle
 // has actually been solved recently (see exercises store's hasSolvedRecently) — jumping
 // straight into analysis for a puzzle that hasn't been solved would let the player read

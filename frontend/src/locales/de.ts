@@ -292,6 +292,12 @@ export const de: typeof en = {
       title: 'Sprache',
       description: 'Wähle die Sprache der App.',
     },
+    engine: {
+      title: 'Engine',
+      threadsLabel: 'CPU-Threads',
+      threadsHint:
+        'Mehr Threads machen die Engine stärker, beanspruchen aber das Gerät mehr. Die Voreinstellung entspricht ungefähr der Anzahl physischer Kerne.',
+    },
     accountTitle: 'Konto',
     endgameNirvanaAccountLabel: 'Endgame Nirvana Konto',
     signedInAs: 'Angemeldet als',

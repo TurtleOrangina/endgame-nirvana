@@ -179,6 +179,7 @@ export const useSyncStore = defineStore('sync', () => {
                 themeMode: profile.themeMode,
                 language: profile.language,
                 lichessUsername: profile.lichessUsername,
+                engineThreads: profile.engineThreads,
               },
             })
             .eq('id', session.user.id)

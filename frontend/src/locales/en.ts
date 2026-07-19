@@ -284,6 +284,11 @@ export const en = {
       title: 'Language',
       description: "Choose the app's language.",
     },
+    engine: {
+      title: 'Engine',
+      threadsLabel: 'CPU threads',
+      threadsHint: 'More threads make the engine stronger but use more of your device.',
+    },
     accountTitle: 'Account',
     endgameNirvanaAccountLabel: 'Endgame Nirvana Account',
     signedInAs: 'Signed in as',

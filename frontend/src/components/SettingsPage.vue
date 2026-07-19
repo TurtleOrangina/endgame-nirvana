@@ -160,6 +160,13 @@ function onLanguageChange(event: Event): void {
   userProfileStore.setLanguage(value)
 }
 
+// One core stays reserved for the UI, so the board never stutters while the engine thinks
+const maxEngineThreads = Math.max(1, navigator.hardwareConcurrency - 1)
+
+function onEngineThreadsChange(event: Event): void {
+  userProfileStore.setEngineThreads(Number((event.target as HTMLInputElement).value))
+}
+
 const inactivePuzzlesDetail = computed((): string | null => {
   const { tooHard, tooEasy } = difficultyPuzzleCounts.value
   const parts: string[] = []
@@ -315,6 +322,31 @@ const deleteAccountLabel = computed(() =>
             {{ option.label }}
           </option>
         </select>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">{{ t((s) => s.profile.engine.title) }}</h2>
+
+      <div class="ident-row ident-row-top">
+        <span class="ident-label">{{ t((s) => s.profile.engine.threadsLabel) }}</span>
+        <div class="ident-select-group">
+          <div v-if="profile" class="threads-slider-row">
+            <input
+              type="range"
+              class="threads-slider"
+              min="1"
+              :max="maxEngineThreads"
+              step="1"
+              :value="Math.min(profile.engineThreads, maxEngineThreads)"
+              @input="onEngineThreadsChange"
+            />
+            <span class="threads-value">{{
+              Math.min(profile.engineThreads, maxEngineThreads)
+            }}</span>
+          </div>
+          <p class="ident-hint">{{ t((s) => s.profile.engine.threadsHint) }}</p>
+        </div>
       </div>
     </section>
 
@@ -479,6 +511,26 @@ const deleteAccountLabel = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+}
+
+.threads-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.threads-slider {
+  width: 180px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.threads-value {
+  min-width: 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--fg);
+  text-align: right;
 }
 
 .ident-hint {

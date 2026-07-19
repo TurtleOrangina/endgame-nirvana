@@ -175,6 +175,15 @@ vp check --fix                  # format + lint + type-check, auto-fix where pos
 vp run type-check               # vue-tsc: also type-checks .vue templates (vp check does not!)
 ```
 
+## Debugging with Stockfish
+
+A CLI wrapper around the bundled engine is available for ad-hoc position analysis
+(run from `frontend/`):
+
+```sh
+(printf 'uci\nsetoption name MultiPV value 5\nposition fen 8/3k4/7p/2KP3P/8/8/8/8 b - - 3 2\ngo movetime 400\n'; sleep 1) | node scripts/stockfish-cli.mjs | tail -n 6
+```
+
 ## Architecture
 
 Vue 3 + TypeScript SPA. Entry point: `src/main.ts`. State management: Pinia (`src/stores/`). The `@` alias resolves to `src/`.

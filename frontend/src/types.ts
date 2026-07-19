@@ -72,6 +72,7 @@ export interface UserProfile {
   themeMode: ThemeMode
   language: Language
   lichessUsername: string | null
+  engineThreads: number
 }
 
 export interface EngineLine {
@@ -82,11 +83,20 @@ export interface EngineLine {
   multipvIndex: number
 }
 
+// What determined a line's dtd — the seed source (tablebase/engine) or the line-probe
+// doneness check that ended up smallest. Debug logging only.
+export type DtdReason =
+  | 'tablebase dtm'
+  | 'engine mate'
+  | 'tablebase ordering'
+  | `LineProbe ${string}`
+
 export interface EngineLineWithDTD extends EngineLine {
   // Distance to done: half-moves from the current position until the human player would
   // consider the position solved (checkmate, or earlier simplification into a trivially
   // won/drawn position). null when unknown.
   dtd: number | null
+  dtdReason: DtdReason | null
 }
 
 export interface AnalysisSettings {

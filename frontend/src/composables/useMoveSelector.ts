@@ -1,6 +1,7 @@
 import { watch } from 'vue'
-import { Chess } from 'chess.js'
+import { Chess, type Move } from 'chess.js'
 import type {
+  DtdReason,
   EngineLine,
   EngineLineWithDTD,
   GameResult,
@@ -19,8 +20,7 @@ import { EPSILON, weightedSample } from '@/utils/weightedSample'
 import {
   hasPawnsOnBoard,
   isBareKingVsMajorPiece,
-  isSymmetricMajorPieceEndgame,
-  MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON,
+  materialByColor,
   uciToMoveArgs,
 } from '@/utils/chess'
 
@@ -31,19 +31,37 @@ const PROBE_MULTIPV = 64
 const SELECTION_TIMEOUT_MS = 15_000
 // Stands in for |scoreCP| when a line only has a mate score, so it sorts as "hopeless"
 const MATE_ONLY_FALLBACK_CP = 10_000
+// In the delayer's cp fallback, how many centipawns worse than the least-bad candidate
+// halves a move's weight — the resistance signal lives in the score gaps between
+// candidates, not in the (uniformly huge) absolute evaluations
+const CP_FALLBACK_HALVING_GAP = 100
 // How strongly the delayer gates the trickster when their weights are multiplied together
 const DELAYER_EXPONENT = 2
 // Halfmoves without a pawn move or capture before the engine starts favoring zeroing
 // moves in drawn positions, instead of milking the full 50-move rule (e.g. shuffling for
 // 49 moves between each pawn push in a wrong-bishop fortress)
 const STALLED_HALFMOVE_CLOCK = 24
+// How far into a line the material balance is scanned for a stable level, and how many
+// consecutive half-moves must hold it to count as stable
+const STABLE_BALANCE_SCAN_HALFMOVES = 8
+const STABLE_BALANCE_RUN_HALFMOVES = 3
+// Falling this many pawns of material below the top line's stable balance, sustained over
+// the deficit window, makes a position "done" — the deficit incurred is too high to matter
+const DONE_MATERIAL_DEFICIT = 2
+// Halfmoves the deficit must hold; a line that ends inside the window still counts as
+// done when at least one of its remaining positions shows the deficit (the engine's PV
+// is often too short to hold a late promotion for the full window)
+const DEFICIT_WINDOW_LENGTH = 4
+// Weight of a non-maintaining move whose engine refutation is an immediate checkmate or
+// an immediate capture no maintaining line allows — a blunder that obvious barely dilutes
+// the position's trickiness, since even a careless user would spot the refutation
+const OBVIOUS_BLUNDER_WEIGHT = 0.1
 
 export interface MoveSelectionOptions {
   temperature: number
   isPremove: boolean
   playerColor: PlayerColor
   queryTablebase: boolean
-  userElo: number
   // Checked between the serialized probe searches so a stale selection stops burning engine time
   shouldAbort?: () => boolean
 }
@@ -55,6 +73,29 @@ export interface MoveSelectionResult {
   scoreCP: number | null
   scoreMate: number | null
   tbData: TablebaseResult | null
+}
+
+function uciToSan(fen: string, uci: string): string {
+  try {
+    return new Chess(fen).move(uciToMoveArgs(uci)).san
+  } catch {
+    return uci
+  }
+}
+
+function asPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`.padStart(6)
+}
+
+function dtdWithReason(candidate: EngineLineWithDTD): string {
+  return `dtd=${candidate.dtd ?? '?'}${candidate.dtdReason ? ` [${candidate.dtdReason}]` : ''}`
+}
+
+// How a set of candidates should be sampled, plus what to log about each one
+interface CandidateSamplingPlan {
+  header: string
+  weights: number[]
+  describeCandidate: (index: number) => string
 }
 
 export function useMoveSelector() {
@@ -83,21 +124,75 @@ export function useMoveSelector() {
     })
   }
 
-  // Fraction of the user's legal moves that keep the outcome best play would achieve,
-  // estimated from a wide (MultiPV 64) shallow engine search. With so few pieces on the
-  // board this covers essentially every legal move. When the user is winning, only moves
-  // that keep the win maintain — e.g. blundering into stalemate drops it; when drawing,
-  // anything that isn't lost does.
+  // Weighted fraction of the user's legal moves that keep the outcome best play would
+  // achieve, estimated from a wide (MultiPV 64) shallow engine search. With so few pieces
+  // on the board this covers essentially every legal move. When the user is winning, only
+  // moves that keep the win maintain — e.g. blundering into stalemate drops it; when
+  // drawing, anything that isn't lost does. Moves are weighted by how likely the user is
+  // to consider them: non-maintaining moves refuted by an obvious reply count far less,
+  // while maintaining moves that are checks or captures count more — the fewer legal
+  // checks/captures there are to sift through, the easier the move is to spot.
   function engineMaintainFraction(
+    probedFen: string,
     lines: EngineLine[],
     userOutcomeWithBestPlay: GameResult,
   ): number {
     if (lines.length === 0) return 1
-    const maintaining = lines.filter((l) => {
-      const outcome = scoreToOutcome(l.scoreCP, l.scoreMate)
+    const maintainsOutcome = (line: EngineLine): boolean => {
+      const outcome = scoreToOutcome(line.scoreCP, line.scoreMate)
       return userOutcomeWithBestPlay === 'win' ? outcome === 'win' : outcome !== 'loss'
-    }).length
-    return Math.max(0.35, maintaining / lines.length)
+    }
+
+    const isCheck = (move: Move): boolean => move.san.includes('+') || move.san.includes('#')
+    const isCapture = (move: Move): boolean => move.isCapture() || move.isEnPassant()
+    const legalMoves = new Chess(probedFen).moves({ verbose: true })
+    const legalCheckCount = legalMoves.filter(isCheck).length
+    const legalCaptureCount = legalMoves.filter(isCapture).length
+    const maintainingLineResponses = new Set(
+      lines
+        .filter(maintainsOutcome)
+        .flatMap((line) => (line.moves[1] !== undefined ? [line.moves[1]] : [])),
+    )
+
+    // Checks and captures are what the user calculates first, so a maintaining one is
+    // easier to find than a quiet move — the more so the fewer there are to sift through
+    const maintainingMoveWeight = (uci: string): number => {
+      const move = legalMoves.find((m) => m.from + m.to + (m.promotion ?? '') === uci)
+      if (!move) return 1
+      let weight = 1
+      if (isCheck(move)) weight = Math.max(weight, 1 + 1 / legalCheckCount)
+      if (isCapture(move)) weight = Math.max(weight, 1 + 1 / legalCaptureCount)
+      return weight
+    }
+
+    // A faulty move refuted by an immediate mate, or by an immediate capture that no
+    // maintaining line concedes anyway, is a one-move blunder the user would hardly play
+    const faultyMoveWeight = (line: EngineLine): number => {
+      const responseUci = line.moves[1]
+      if (responseUci === undefined) return 1
+      const chess = new Chess(probedFen)
+      let response: Move
+      try {
+        chess.move(uciToMoveArgs(line.moves[0]!))
+        response = chess.move(uciToMoveArgs(responseUci))
+      } catch {
+        return 1
+      }
+      const isMateBlunder = chess.isCheckmate()
+      const isMaterialBlunder = isCapture(response) && !maintainingLineResponses.has(responseUci)
+      return isMateBlunder || isMaterialBlunder ? OBVIOUS_BLUNDER_WEIGHT : 1
+    }
+
+    let maintainingWeight = 0
+    let totalWeight = 0
+    for (const line of lines) {
+      const weight = maintainsOutcome(line)
+        ? maintainingMoveWeight(line.moves[0]!)
+        : faultyMoveWeight(line)
+      if (maintainsOutcome(line)) maintainingWeight += weight
+      totalWeight += weight
+    }
+    return Math.max(0.35, maintainingWeight / totalWeight)
   }
 
   // Positions along the line where the user is to move — these are what the user would
@@ -120,17 +215,19 @@ export function useMoveSelector() {
 
   // A capture by the user that lands directly in a done position — the line itself may
   // never play it (a mating line happily ignores a hanging piece), but the user would.
-  function userCanCaptureIntoDone(
+  // Returns why the resulting position is done, or null when no such capture exists.
+  function userCaptureIntoDoneReason(
     chess: Chess,
-    isDonePosition: (chess: Chess) => boolean,
-  ): boolean {
-    return chess.moves({ verbose: true }).some((move) => {
-      if (!move.isCapture() && !move.isEnPassant()) return false
+    doneReason: (chess: Chess) => DonePositionReason | null,
+  ): DonePositionReason | null {
+    for (const move of chess.moves({ verbose: true })) {
+      if (!move.isCapture() && !move.isEnPassant()) continue
       chess.move(move)
-      const done = isDonePosition(chess) && !chess.isStalemate()
+      const reason = chess.isStalemate() ? null : doneReason(chess)
       chess.undo()
-      return done
-    })
+      if (reason) return reason
+    }
+    return null
   }
 
   // A move that resets the halfmove clock (pawn move or capture) — in a stalled drawn
@@ -201,33 +298,102 @@ export function useMoveSelector() {
     }
   }
 
+  type DonePositionReason = 'King vs Major' | 'Insufficient Material'
+
+  function donePositionReason(chess: Chess, playerColor: PlayerColor): DonePositionReason | null {
+    const fen = chess.fen()
+    if (isBareKingVsMajorPiece(fen, playerColor)) return 'King vs Major'
+    if (chess.isInsufficientMaterial()) return 'Insufficient Material'
+    return null
+  }
+
+  // Material balance from the computer's perspective: its piece values minus the user's
+  function computerMaterialBalance(fen: string, playerColor: PlayerColor): number {
+    const material = materialByColor(fen)
+    return playerColor === 'white'
+      ? material.black - material.white
+      : material.white - material.black
+  }
+
+  // Balance after each half-move of the line, stopping at the first illegal move
+  function lineMaterialBalances(
+    currentFen: string,
+    moves: string[],
+    playerColor: PlayerColor,
+  ): number[] {
+    const chess = new Chess(currentFen)
+    const balances: number[] = []
+    for (const uci of moves) {
+      try {
+        chess.move(uciToMoveArgs(uci))
+      } catch {
+        break
+      }
+      balances.push(computerMaterialBalance(chess.fen(), playerColor))
+    }
+    return balances
+  }
+
+  // The first material level the line settles at: held for 3 consecutive half-moves
+  // within the first 8. null when the material never balances out in that window.
+  function stableMaterialBalance(
+    currentFen: string,
+    moves: string[],
+    playerColor: PlayerColor,
+  ): number | null {
+    const balances = lineMaterialBalances(currentFen, moves, playerColor).slice(
+      0,
+      STABLE_BALANCE_SCAN_HALFMOVES,
+    )
+    for (let i = 0; i + STABLE_BALANCE_RUN_HALFMOVES <= balances.length; i++) {
+      const run = balances.slice(i, i + STABLE_BALANCE_RUN_HALFMOVES)
+      if (run.every((balance) => balance === run[0])) return run[0]!
+    }
+    return null
+  }
+
   function computeDistanceToDone(
     line: EngineLine,
     currentFen: string,
     tbOutcome: OutcomeRetainingResult | null,
-    outcomeWithBestUserPlay: GameResult,
     playerColor: PlayerColor,
-    userElo: number,
-  ): number | null {
+    startingStableMaterialBalance: number | null,
+  ): { dtd: number | null; dtdReason: DtdReason | null } {
     let dtd: number | null = null
+    let dtdReason: DtdReason | null = null
 
     // Seed from the tablebase's distance to mate (dtm is in half-moves from the position
     // after the move, so the move itself adds one). Drawn moves report dtm 0 — there is
     // no mate distance, so they must not seed anything.
     const tbMove = tbOutcome?.result.moves.find((m) => m.uci === line.moves[0])
-    if (tbMove && tbMove.dtm !== null && tbMove.dtm !== 0) dtd = Math.abs(tbMove.dtm) + 1
+    if (tbMove && tbMove.dtm !== null && tbMove.dtm !== 0) {
+      dtd = Math.abs(tbMove.dtm) + 1
+      dtdReason = 'tablebase dtm'
+    }
 
     // Engine mate scores are in full moves
-    if (dtd === null && line.scoreMate !== null) dtd = 2 * Math.abs(line.scoreMate)
+    if (dtd === null && line.scoreMate !== null) {
+      dtd = 2 * Math.abs(line.scoreMate)
+      dtdReason = 'engine mate'
+    }
 
-    const isDonePosition = (chess: Chess): boolean => {
-      const fen = chess.fen()
-      return (
-        (userElo > MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON &&
-          isBareKingVsMajorPiece(fen, playerColor)) ||
-        chess.isInsufficientMaterial() ||
-        (outcomeWithBestUserPlay === 'draw' && isSymmetricMajorPieceEndgame(fen))
-      )
+    const doneReason = (chess: Chess): DonePositionReason | null =>
+      donePositionReason(chess, playerColor)
+
+    if (doneReason(new Chess(currentFen)) !== null) return { dtd, dtdReason }
+
+    const balances = lineMaterialBalances(currentFen, line.moves, playerColor)
+    // The computer has fallen at least DONE_MATERIAL_DEFICIT pawns below the top line's
+    // stable balance and stays there for the full deficit window — done, the material
+    // deficit incurred is too high
+    const holdsExcessiveDeficit = (balanceIndex: number): boolean => {
+      if (startingStableMaterialBalance === null) return false
+      const window = balances.slice(balanceIndex, balanceIndex + DEFICIT_WINDOW_LENGTH)
+      const isExcessiveDeficit = (balance: number): boolean =>
+        balance <= startingStableMaterialBalance - DONE_MATERIAL_DEFICIT
+      return window.length === DEFICIT_WINDOW_LENGTH
+        ? window.every(isExcessiveDeficit)
+        : window.some(isExcessiveDeficit)
     }
 
     // Play the line out and stop at the first position the user would call "done" — e.g.
@@ -240,21 +406,79 @@ export function useMoveSelector() {
         break
       }
       const halfMovesPlayed = i + 1
-      if (isDonePosition(chess)) {
-        dtd = Math.min(dtd ?? Infinity, halfMovesPlayed)
+      const positionReason = doneReason(chess)
+      if (positionReason !== null || holdsExcessiveDeficit(i)) {
+        if (halfMovesPlayed < (dtd ?? Infinity)) {
+          dtd = halfMovesPlayed
+          dtdReason = positionReason ? `LineProbe ${positionReason}` : 'LineProbe Material deficit'
+        }
         break
       }
       // The line tracks the fastest mate, which can leave a blundered piece hanging
       // forever (capturing it would only slow the mate down) — but the user would just
       // take it and call the position done, so probe their one-move deviations too
       const isUserToMove = i % 2 === 0
-      if (isUserToMove && userCanCaptureIntoDone(chess, isDonePosition)) {
-        dtd = Math.min(dtd ?? Infinity, halfMovesPlayed + 1)
+      const captureReason = isUserToMove ? userCaptureIntoDoneReason(chess, doneReason) : null
+      if (captureReason !== null) {
+        if (halfMovesPlayed + 1 < (dtd ?? Infinity)) {
+          dtd = halfMovesPlayed + 1
+          dtdReason = `LineProbe Capture into ${captureReason}`
+        }
         break
       }
     }
 
-    return dtd
+    return { dtd, dtdReason }
+  }
+
+  // A candidate with a larger tablebase mate distance is the more resistant defense, no
+  // matter what the line probes found: each candidate's PV picks an arbitrary winning
+  // plan for the user (fast promotion in one line, a slow pawn hunt in another), so probe
+  // distances from different PVs are not comparable and must not undercut the tablebase's
+  // exact resistance ordering. And since the extra resistance a higher-dtm defense buys
+  // happens before the collapse into a done position (the mopping-up tail after the
+  // collapse is much alike across lines), the dtd gap should be at least the dtm gap —
+  // not merely non-negative. Candidates are walked in groups of ascending dtm, flooring
+  // every dtd at the best dtd-relative-to-dtm shift seen among faster-mate groups plus
+  // the candidate's own dtm; within a group (equal dtm) the probes' ordering is kept.
+  function clampDistancesToTablebaseOrdering(
+    candidates: EngineLineWithDTD[],
+    tbOutcome: OutcomeRetainingResult | null,
+  ): void {
+    if (!tbOutcome) return
+    const dtmOf = (line: EngineLineWithDTD): number | null => {
+      const tbMove = tbOutcome.result.moves.find((m) => m.uci === line.moves[0])
+      return tbMove && tbMove.dtm !== null && tbMove.dtm !== 0 ? Math.abs(tbMove.dtm) : null
+    }
+    const ranked = candidates
+      .flatMap((candidate) => {
+        const dtm = dtmOf(candidate)
+        return dtm !== null && candidate.dtd !== null ? [{ candidate, dtm }] : []
+      })
+      .sort((a, b) => a.dtm - b.dtm)
+
+    let maxDtdMinusDtmOfFasterMates = -Infinity
+    let index = 0
+    while (index < ranked.length) {
+      const groupDtm = ranked[index]!.dtm
+      const group: EngineLineWithDTD[] = []
+      while (index < ranked.length && ranked[index]!.dtm === groupDtm) {
+        group.push(ranked[index]!.candidate)
+        index++
+      }
+      const dtdFloor =
+        maxDtdMinusDtmOfFasterMates === -Infinity ? 0 : maxDtdMinusDtmOfFasterMates + groupDtm
+      for (const candidate of group) {
+        if (candidate.dtd! < dtdFloor) {
+          candidate.dtd = dtdFloor
+          candidate.dtdReason = 'tablebase ordering'
+        }
+      }
+      maxDtdMinusDtmOfFasterMates = Math.max(
+        maxDtdMinusDtmOfFasterMates,
+        ...group.map((c) => c.dtd! - groupDtm),
+      )
+    }
   }
 
   // Normalize to sum 1, then — unless everything is already near-uniformly spread — zero
@@ -288,12 +512,17 @@ export function useMoveSelector() {
         candidates.map((c) => (c.dtd! < 7 ? 2 ** c.dtd! : 2 ** 6 + c.dtd! ** 2)),
       )
     }
-    // No dtd for every line — the engine wants to minimize |scoreCP| when losing
+    // No trustworthy dtd for every line (typically an engine-only loss without a mate
+    // score) — fall back to the engine's scores: it minimizes |scoreCP| when losing, and
+    // the cp ordering tracks the tablebase's distance-to-mate ordering well. Weight by
+    // the gap to the least-bad candidate, since the absolute evaluations are all equally
+    // hopeless and only the differences carry the resistance signal.
+    const absoluteCps = candidates.map((c) =>
+      c.scoreCP !== null ? Math.abs(c.scoreCP) : MATE_ONLY_FALLBACK_CP,
+    )
+    const leastBadCp = Math.min(...absoluteCps)
     return normalizeWeights(
-      candidates.map((c) => {
-        const absoluteCp = c.scoreCP !== null ? Math.abs(c.scoreCP) : MATE_ONLY_FALLBACK_CP
-        return 1 / Math.max(1, absoluteCp)
-      }),
+      absoluteCps.map((cp) => 2 ** (-(cp - leastBadCp) / CP_FALLBACK_HALVING_GAP)),
     )
   }
 
@@ -334,7 +563,7 @@ export function useMoveSelector() {
 
       const fraction = await engine
         .getBestMoves(probe.fen, [], PROBE_THINKING_TIME_MS, PROBE_MULTIPV)
-        .then((lines) => engineMaintainFraction(lines, userOutcomeWithBestPlay))
+        .then((lines) => engineMaintainFraction(probe.fen, lines, userOutcomeWithBestPlay))
       lineProducts[probe.lineIndex] = lineProducts[probe.lineIndex]! * fraction
     }
 
@@ -342,6 +571,87 @@ export function useMoveSelector() {
       lineProducts.map((product) => 1 / Math.min(1, Math.max(EPSILON, product))),
     )
     return { weights, lineProducts }
+  }
+
+  async function getDrawSamplingPlan(
+    candidatesWithDtd: EngineLineWithDTD[],
+    currentFen: string,
+    halfmoveClock: number,
+    isStalledDraw: boolean,
+    shouldAbort: (() => boolean) | undefined,
+  ): Promise<CandidateSamplingPlan> {
+    const trickster = await getSamplingWeightsTrickster(
+      candidatesWithDtd,
+      currentFen,
+      'draw',
+      shouldAbort,
+    )
+    let weights = trickster.weights
+    const zeroingFlags = candidatesWithDtd.map((c) => isZeroingMove(currentFen, c.moves[0]!))
+    let zeroingBoost = 1
+    if (isStalledDraw) {
+      // Doubles every 2 halfmoves past the threshold — gentle at first, then
+      // irresistible, so the game keeps progressing no matter how tricky the shuffles
+      zeroingBoost = 2 ** ((halfmoveClock - STALLED_HALFMOVE_CLOCK) / 2 + 3)
+      weights = normalizeWeights(
+        weights.map((w, i) => (zeroingFlags[i] ? Math.max(w, 0.01) * zeroingBoost : w)),
+      )
+    }
+    return {
+      header: `Move candidates (draw, halfmove clock ${halfmoveClock}) ${currentFen}:`,
+      weights,
+      describeCandidate: (i) =>
+        `(fault_potential=${asPercent(1 - trickster.lineProducts[i]!)}, ` +
+        `${dtdWithReason(candidatesWithDtd[i]!)})` +
+        (zeroingFlags[i] ? ` zeroing_boost=x${zeroingBoost.toFixed(0)}` : ''),
+    }
+  }
+
+  async function getLossSamplingPlan(
+    candidatesWithDtd: EngineLineWithDTD[],
+    currentFen: string,
+    shouldAbort: (() => boolean) | undefined,
+  ): Promise<CandidateSamplingPlan> {
+    const delayerWeights = getSamplingWeightsDelayer(candidatesWithDtd)
+    // In a pawnless lost position the trickster adds nothing but noise — pure piece
+    // play offers no structural traps worth steering into, so the delayer decides alone
+    const trickster = hasPawnsOnBoard(currentFen)
+      ? await getSamplingWeightsTrickster(candidatesWithDtd, currentFen, 'loss', shouldAbort)
+      : null
+    return {
+      header: `Move candidates (loss) ${currentFen}:`,
+      weights: trickster
+        ? combineDelayerAndTrickster(delayerWeights, trickster.weights)
+        : delayerWeights,
+      describeCandidate: (i) =>
+        `w_delayer=${asPercent(delayerWeights[i]!)} ` +
+        `w_trickster=${trickster ? asPercent(trickster.weights[i]!) : 'n/a'.padStart(6)} ` +
+        `(fault_potential=${trickster ? asPercent(1 - trickster.lineProducts[i]!) : 'n/a'.padStart(6)}, ` +
+        `${dtdWithReason(candidatesWithDtd[i]!)})`,
+    }
+  }
+
+  function sampleAndLogCandidates(
+    candidatesWithDtd: EngineLineWithDTD[],
+    plan: CandidateSamplingPlan,
+    currentFen: string,
+    temperature: number,
+  ): number {
+    const [temperedWeights, chosenIndex] = weightedSample(plan.weights, temperature)
+    console.log(plan.header + '\n')
+    const byWeightDescending = [...candidatesWithDtd.keys()].sort(
+      (a, b) => plan.weights[b]! - plan.weights[a]!,
+    )
+    for (const i of byWeightDescending) {
+      const candidate = candidatesWithDtd[i]!
+      console.log(
+        '  ' +
+          (i === chosenIndex ? '* ' : '  ') +
+          `${uciToSan(currentFen, candidate.moves[0]!).padStart(5)} ${asPercent(temperedWeights[i]!)} ` +
+          plan.describeCandidate(i),
+      )
+    }
+    return chosenIndex
   }
 
   async function getBestMove(
@@ -469,101 +779,41 @@ export function useMoveSelector() {
       return { bestmove: candidates[0]!.moves[0]!, scoreCP, scoreMate, tbData }
     }
 
+    const startingStableMaterialBalance = stableMaterialBalance(
+      currentFen,
+      lines[0]!.moves,
+      options.playerColor,
+    )
     const candidatesWithDtd: EngineLineWithDTD[] = candidates.map((line) => ({
       ...line,
-      dtd: computeDistanceToDone(
+      ...computeDistanceToDone(
         line,
         currentFen,
         tbOutcome,
-        outcomeWithBestUserPlay,
         options.playerColor,
-        options.userElo,
+        startingStableMaterialBalance,
       ),
     }))
+    clampDistancesToTablebaseOrdering(candidatesWithDtd, tbOutcome)
 
-    const uciToSan = (uci: string): string => {
-      try {
-        return new Chess(currentFen).move(uciToMoveArgs(uci)).san
-      } catch {
-        return uci
-      }
-    }
-    const asPercent = (value: number): string => `${(value * 100).toFixed(1)}%`.padStart(5)
-
-    let weights: number[]
-    if (outcomeWithBestUserPlay === 'draw') {
-      const trickster = await getSamplingWeightsTrickster(
-        candidatesWithDtd,
-        currentFen,
-        outcomeWithBestUserPlay,
-        options.shouldAbort,
-      )
-      weights = trickster.weights
-      const zeroingFlags = candidatesWithDtd.map((c) => isZeroingMove(currentFen, c.moves[0]!))
-      let zeroingBoost = 1
-      if (isStalledDraw) {
-        // Doubles every 2 halfmoves past the threshold — gentle at first, then
-        // irresistible, so the game keeps progressing no matter how tricky the shuffles
-        zeroingBoost = 2 ** ((halfmoveClock - STALLED_HALFMOVE_CLOCK) / 2 + 3)
-        weights = normalizeWeights(
-          weights.map((w, i) => (zeroingFlags[i] ? Math.max(w, 0.01) * zeroingBoost : w)),
-        )
-      }
-      console.log(
-        `Move candidates (${outcomeWithBestUserPlay}, halfmove clock ${halfmoveClock}) ${currentFen}:\n`,
-      )
-      const byWeightDescending = [...candidatesWithDtd.keys()].sort(
-        (a, b) => weights[b]! - weights[a]!,
-      )
-      for (const i of byWeightDescending) {
-        const c = candidatesWithDtd[i]!
-        console.log(
-          `    ${uciToSan(c.moves[0]!)}  w=${asPercent(weights[i]!)} ` +
-            `(dtd=${c.dtd ?? '?'}, fault_potential=${asPercent(1 - trickster.lineProducts[i]!)})` +
-            (zeroingFlags[i] ? ` zeroing_boost=x${zeroingBoost.toFixed(0)}` : '') +
-            '\n',
-        )
-      }
-    } else {
-      const delayerWeights = getSamplingWeightsDelayer(candidatesWithDtd)
-      // In a pawnless lost position the trickster adds nothing but noise — pure piece
-      // play offers no structural traps worth steering into, so the delayer decides alone
-      const trickster = hasPawnsOnBoard(currentFen)
-        ? await getSamplingWeightsTrickster(
+    const plan =
+      outcomeWithBestUserPlay === 'draw'
+        ? await getDrawSamplingPlan(
             candidatesWithDtd,
             currentFen,
-            outcomeWithBestUserPlay,
+            halfmoveClock,
+            isStalledDraw,
             options.shouldAbort,
           )
-        : null
-      weights = trickster
-        ? combineDelayerAndTrickster(delayerWeights, trickster.weights)
-        : delayerWeights
-      console.log(`Move candidates (${outcomeWithBestUserPlay}) ${currentFen}:\n`)
-      const byCombinedWeightDescending = [...candidatesWithDtd.keys()].sort(
-        (a, b) => weights[b]! - weights[a]!,
-      )
-      for (const i of byCombinedWeightDescending) {
-        const c = candidatesWithDtd[i]!
-        const move = uciToSan(c.moves[0]!).padStart(5)
-        const dtd = String(c.dtd ?? '?').padStart(2)
-        const fault = trickster ? asPercent(1 - trickster.lineProducts[i]!) : '  n/a'
-        const wDelayer = asPercent(delayerWeights[i]!)
-        const wTrickster = trickster ? asPercent(trickster.weights[i]!) : '  n/a'
-
-        console.log(
-          `    ${move} w=${asPercent(weights[i]!)} w_delayer=${wDelayer} w_trickster=${wTrickster} ` +
-            `(dtd=${dtd} fault_potential=${fault})`,
-        )
-      }
-    }
-
-    const chosen = weightedSample(
+        : await getLossSamplingPlan(candidatesWithDtd, currentFen, options.shouldAbort)
+    const chosenIndex = sampleAndLogCandidates(
       candidatesWithDtd,
-      weights,
+      plan,
+      currentFen,
       options.temperature,
-      (c) => c.moves[0]!,
     )
+
+    const chosen = candidates[chosenIndex]!
     return { bestmove: chosen.moves[0]!, scoreCP, scoreMate, tbData }
   }
 

@@ -9,7 +9,21 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 const projectRoot = fileURLToPath(new URL('.', import.meta.url))
 const stockfishBinDir = path.join(projectRoot, 'node_modules', 'stockfish', 'bin')
-const ENGINE_FILES = ['stockfish-18-lite-single.js', 'stockfish-18-lite-single.wasm']
+// Multi-threaded build plus the single-threaded fallback for contexts without
+// SharedArrayBuffer (stale cached shell without COOP/COEP, old browsers/WebViews)
+const ENGINE_FILES = [
+  'stockfish-18-lite.js',
+  'stockfish-18-lite.wasm',
+  'stockfish-18-lite-single.js',
+  'stockfish-18-lite-single.wasm',
+]
+
+// SharedArrayBuffer (required by the multi-threaded engine build) only exists in
+// cross-origin isolated contexts; production sets the same headers in public/_headers.
+const crossOriginIsolationHeaders = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+}
 
 function stockfishPlugin(): Plugin {
   return {
@@ -156,5 +170,11 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+  },
+  server: {
+    headers: crossOriginIsolationHeaders,
+  },
+  preview: {
+    headers: crossOriginIsolationHeaders,
   },
 })

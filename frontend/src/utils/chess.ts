@@ -60,6 +60,15 @@ export function hasPawnsOnBoard(fen: string): boolean {
   return white.includes('p') || black.includes('p')
 }
 
+export const PIECE_VALUE: Record<string, number> = { q: 9, r: 5, b: 3, n: 3, p: 1 }
+
+export function materialByColor(fen: string): { white: number; black: number } {
+  const { white, black } = piecesByColor(fen)
+  const sumValues = (pieces: string[]): number =>
+    pieces.reduce((sum, piece) => sum + (PIECE_VALUE[piece] ?? 0), 0)
+  return { white: sumValues(white), black: sumValues(black) }
+}
+
 // Below this rating, converting a bare-king-vs-major-piece material edge isn't
 // trivial yet, so it shouldn't be treated as an automatic win.
 export const MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON = 1000
@@ -73,16 +82,6 @@ export function isBareKingVsMajorPiece(fen: string, playerColor: PlayerColor): b
   const opponentIsBareKing = opponentPieces.length === 1 && opponentPieces[0] === 'k'
   const playerHasMajorPiece = playerPieces.includes('q') || playerPieces.includes('r')
   return opponentIsBareKing && playerHasMajorPiece
-}
-
-// True for exactly king+rook vs king+rook or king+queen vs king+queen — the symmetric
-// major-piece endgames a human player treats as trivially drawn.
-export function isSymmetricMajorPieceEndgame(fen: string): boolean {
-  const { white, black } = piecesByColor(fen)
-  if (white.length !== 2 || black.length !== 2) return false
-  const whiteSorted = [...white].sort().join('')
-  const blackSorted = [...black].sort().join('')
-  return whiteSorted === blackSorted && (whiteSorted === 'kq' || whiteSorted === 'kr')
 }
 
 export function uciLineToPretty(fen: string, uciMoves: string[]): string[] {

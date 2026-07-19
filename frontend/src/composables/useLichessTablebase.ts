@@ -1,8 +1,25 @@
 import type { GameResult, TablebaseCategory, TablebaseMove, TablebaseResult } from '@/types'
+import { materialByColor } from '@/utils/chess'
 
 const TABLEBASE_URL = 'https://tablebase.lichess.ovh/standard'
 
-const PIECE_VALUE: Record<string, number> = { q: 9, r: 5, b: 3, n: 3 }
+// The tablebase needs no authentication, but rate-limits aggressively: any 429 means
+// backing off from all requests for a full minute (per the Lichess API guidelines).
+const RATE_LIMIT_BACKOFF_MS = 60_000
+let rateLimitedUntil = 0
+
+// Successful lookups are cached for the session (module scope — the composable is
+// constructed per-caller). Shuffling revisits positions constantly, and analysis and
+// move selection often probe the same position near-simultaneously, so the cache holds
+// in-flight promises: the second caller awaits the first request instead of repeating
+// it. Failed lookups are evicted so they can be retried.
+const cachedQueries = new Map<string, Promise<TablebaseResult | null>>()
+
+// The fullmove number never affects the result, but the halfmove clock must stay in the
+// key: it decides whether a win still fits within the 50-move rule (cursed wins).
+function cacheKey(fen: string): string {
+  return fen.split(' ').slice(0, 5).join(' ')
+}
 
 export const CATEGORY_RANK: Record<TablebaseCategory, number> = {
   win: 4,
@@ -71,14 +88,7 @@ export function isDtzAsValuableAsDtm(fen: string): boolean {
 
   if (pieces.includes('P') || pieces.includes('p')) return false
 
-  let whiteMaterial = 0
-  let blackMaterial = 0
-  for (const piece of pieces) {
-    const value = PIECE_VALUE[piece.toLowerCase()]
-    if (value === undefined) continue
-    if (piece === piece.toUpperCase()) whiteMaterial += value
-    else blackMaterial += value
-  }
+  const { white: whiteMaterial, black: blackMaterial } = materialByColor(fen)
 
   if (whiteMaterial === 0 || blackMaterial === 0) return false
   if (Math.abs(whiteMaterial - blackMaterial) > 6) return false
@@ -131,8 +141,24 @@ export interface OutcomeRetainingResult {
 
 export function useLichessTablebase() {
   async function query(fen: string): Promise<TablebaseResult | null> {
+    const key = cacheKey(fen)
+    const cached = cachedQueries.get(key)
+    if (cached) return cached
+    if (Date.now() < rateLimitedUntil) return null
+    const pending = fetchTablebase(fen)
+    cachedQueries.set(key, pending)
+    const result = await pending
+    if (result === null) cachedQueries.delete(key)
+    return result
+  }
+
+  async function fetchTablebase(fen: string): Promise<TablebaseResult | null> {
     try {
       const response = await fetch(`${TABLEBASE_URL}?fen=${encodeURIComponent(fen)}`)
+      if (response.status === 429) {
+        rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
+        return null
+      }
       if (!response.ok) return null
 
       const data = (await response.json()) as {

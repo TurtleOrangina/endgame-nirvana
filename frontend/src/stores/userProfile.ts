@@ -8,6 +8,7 @@ import type {
   Language,
 } from '@/types'
 import { detectBrowserLocale } from '@/utils/detectLocale'
+import { defaultEngineThreads } from '@/composables/useStockfishEngine'
 import type { Tables } from '@/types/database'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
 import { RECENT_ATTEMPT_EXCLUSION_MS } from '@/utils/attemptWindow'
@@ -33,6 +34,8 @@ function loadProfile(): UserProfile | null {
     if (!profile.language) profile.language = 'en'
     // Profiles created before Lichess-linking was synced to the backend don't have this field.
     if (profile.lichessUsername === undefined) profile.lichessUsername = null
+    // Profiles created before the engine-threads setting don't have this field.
+    if (profile.engineThreads === undefined) profile.engineThreads = defaultEngineThreads()
 
     // Rewrites any legacy `${path}::${fen}` exerciseIds to the new normalized-FEN id
     // scheme. Idempotent, so it's safe to run on every load; only persists if changed.
@@ -97,6 +100,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       // stored (and possibly user-overridden) value always wins.
       language: detectBrowserLocale(),
       lichessUsername,
+      engineThreads: defaultEngineThreads(),
     }
     persistProfile(profile.value)
     if (lichessUsername) useSyncStore().markProfileDirty()
@@ -196,6 +200,14 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     useSyncStore().markProfileDirty()
   }
 
+  function setEngineThreads(threads: number): void {
+    const p = profile.value
+    if (!p) return
+    p.engineThreads = threads
+    persistProfile(p)
+    useSyncStore().markProfileDirty()
+  }
+
   function setLichessUsername(username: string | null): void {
     const p = profile.value
     if (!p) return
@@ -226,6 +238,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       themeMode?: ThemeMode
       language?: Language
       lichessUsername?: string | null
+      engineThreads?: number
     } | null
 
     profile.value = {
@@ -252,6 +265,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       themeMode: settings?.themeMode ?? 'dark',
       language: settings?.language ?? 'en',
       lichessUsername: settings?.lichessUsername ?? null,
+      engineThreads: settings?.engineThreads ?? defaultEngineThreads(),
     }
     persistProfile(profile.value)
   }
@@ -270,6 +284,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     setTablebaseMovesExpanded,
     setThemeMode,
     setLanguage,
+    setEngineThreads,
     setLichessUsername,
     applyRemoteProfile,
     applyServerElo,

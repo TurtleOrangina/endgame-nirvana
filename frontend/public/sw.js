@@ -1,4 +1,8 @@
-const CACHE_NAME = 'endgame-nirvana-v1'
+// v2 flushed responses cached before the COOP/COEP headers existed — a shell served
+// from the old cache lacks them, silently downgrading the page to non-isolated.
+// v3 flushes engine files the service worker briefly cached; they are no longer
+// intercepted at all (see below).
+const CACHE_NAME = 'endgame-nirvana-v3'
 const CORE_ASSETS = ['/', '/manifest.webmanifest', '/favicon.png']
 
 self.addEventListener('install', (event) => {
@@ -23,6 +27,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
+  // Only the app's own assets belong in the shell cache. Cross-origin requests
+  // (tablebase, Supabase, browser-extension resources) pass through untouched —
+  // intercepting them broke pages when such a fetch failed with nothing cached.
+  if (!request.url.startsWith(self.location.origin)) return
+  // The engine files are immutable and cached by the plain HTTP cache; serving the
+  // multi-threaded engine's worker scripts through the service worker hung its thread
+  // bootstrap in the field, so they are deliberately not intercepted at all.
+  if (new URL(request.url).pathname.startsWith('/engines/')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -34,7 +46,12 @@ self.addEventListener('fetch', (event) => {
             .then((cache) => cache.put(request, clone))
             .then(() => response)
         })
-        .catch(() => caches.match(request).then((cached) => cached ?? caches.match('/'))),
+        .catch(() =>
+          caches
+            .match(request)
+            .then((cached) => cached ?? caches.match('/'))
+            .then((cached) => cached ?? Response.error()),
+        ),
     )
     return
   }
@@ -54,7 +71,7 @@ self.addEventListener('fetch', (event) => {
             .then((cache) => cache.put(request, clone))
             .then(() => response)
         })
-        .catch(() => undefined)
+        .catch(() => Response.error())
       return cached ?? networkFetch
     }),
   )

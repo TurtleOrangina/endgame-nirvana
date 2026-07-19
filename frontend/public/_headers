@@ -1,4 +1,15 @@
+# Cross-origin isolation: required for SharedArrayBuffer, which the multi-threaded
+# Stockfish build needs. Must cover the document and every worker script (dev/preview
+# set the same headers via vite.config.ts).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
 /exercises-manifest.json
+  Cache-Control: no-cache
+
+# Service worker updates must reach clients promptly — never cache the script
+/sw.js
   Cache-Control: no-cache
 
 /data/*
