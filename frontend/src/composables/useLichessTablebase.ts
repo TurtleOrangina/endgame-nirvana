@@ -180,7 +180,7 @@ export function useLichessTablebase() {
         }>
       }
 
-      const moves: TablebaseMove[] = (data.moves ?? []).map((m) => ({
+      const allMoves: TablebaseMove[] = (data.moves ?? []).map((m) => ({
         uci: m.uci,
         san: m.san,
         zeroing: m.zeroing ?? false,
@@ -196,12 +196,21 @@ export function useLichessTablebase() {
         category: parseCategory(m.category),
       }))
 
-      if (moves.length === 0) return null
+      if (allMoves.length === 0) return null
 
-      const category = moves.reduce<TablebaseCategory>(
+      // Derived from every legal move (unknown ranks lowest), so the overall category stays
+      // 'unknown' whenever any move is off-tablebase — the signal callers use to know the
+      // position isn't fully solved and fall back to the engine.
+      const category = allMoves.reduce<TablebaseCategory>(
         (best, m) => (CATEGORY_RANK[m.category] < CATEGORY_RANK[best] ? m.category : best),
-        moves[0]!.category,
+        allMoves[0]!.category,
       )
+
+      // Unknown-category moves carry no tablebase verdict (e.g. 8-piece positions the
+      // tablebase doesn't cover). Drop them so they can't be displayed or ranked as the
+      // best move; sorting then surfaces the best *known* move first.
+      const moves = allMoves.filter((m) => m.category !== 'unknown')
+      if (moves.length === 0) return null
 
       const isDtzValuable = isDtzAsValuableAsDtm(fen)
       moves.sort((a, b) => compareMoves(a, b, isDtzValuable))
@@ -214,12 +223,15 @@ export function useLichessTablebase() {
 
   // Like query(), but additionally reduced to what matters for move selection: the best
   // outcome the mover can force and the moves that retain it. Returns null when the
-  // position isn't completely solved by the tablebase (query failure or any
-  // unknown-category move), so callers can defer to the engine instead.
+  // position isn't completely solved by the tablebase (query failure or an 'unknown'
+  // overall category, i.e. some legal move is off-tablebase), so callers can defer to the
+  // engine instead.
   async function queryOutcomeRetaining(fen: string): Promise<OutcomeRetainingResult | null> {
     const result = await query(fen)
     if (!result) return null
-    if (result.moves.some((m) => m.category === 'unknown')) return null
+    // An 'unknown' overall category means at least one legal move is off-tablebase, so the
+    // position isn't fully solved — defer to the engine rather than trust a partial verdict.
+    if (result.category === 'unknown') return null
 
     const bestOutcome = categoryToOutcome(flipCategory(result.category))
     if (bestOutcome === null) return null

@@ -380,6 +380,15 @@ const bestEngineMoveUci = ref<string | null>(null)
 const bestTablebaseMoveUci = ref<string | null>(null)
 const hoveredMoveUci = ref<string | null>(null)
 
+// The tablebase only speaks authoritatively when it classifies every legal move. An
+// 'unknown' overall category means at least one move is off-tablebase (e.g. 8-piece
+// positions), so its top move can't be trusted as best — defer to the engine for both the
+// arrow and "Play best move".
+function authoritativeTablebaseBestUci(result: TablebaseResult | null): string | null {
+  if (!result || result.category === 'unknown') return null
+  return result.moves[0]?.uci ?? null
+}
+
 function uciToShape(uci: string, brush: string): DrawShape | null {
   if (uci.length < 4) return null
   return { orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush }
@@ -826,7 +835,7 @@ function onPositionChanged(): void {
     if (shouldQueryTablebase(pausedFen)) {
       tablebase.query(pausedFen).then((tbResult) => {
         if (analysisPaused.value && historyEntries.value[historyIndex.value]?.fen === pausedFen) {
-          bestTablebaseMoveUci.value = tbResult?.moves[0]?.uci ?? null
+          bestTablebaseMoveUci.value = authoritativeTablebaseBestUci(tbResult)
           updateAutoShapes()
           emit('analysis-update', [], tbResult, pausedFen)
         }
@@ -860,7 +869,7 @@ async function runAnalysis(currentFen: string, startFen: string, moves: string[]
   function emitProgress(lines: EngineLine[], tbResult: TablebaseResult | null): void {
     if (moveGeneration !== gen) return
     bestEngineMoveUci.value = lines[0]?.moves[0] ?? null
-    bestTablebaseMoveUci.value = tbResult?.moves[0]?.uci ?? null
+    bestTablebaseMoveUci.value = authoritativeTablebaseBestUci(tbResult)
     updateAutoShapes()
     emit('analysis-update', lines, tbResult, currentFen)
   }
@@ -1153,7 +1162,8 @@ async function resolveBestMoveUci(): Promise<string | null> {
     engine.getBestMoves(startFen, moves),
     shouldQueryTablebase(currentFen) ? tablebase.query(currentFen) : Promise.resolve(null),
   ])
-  const tbMove = tbResult.status === 'fulfilled' ? (tbResult.value?.moves[0]?.uci ?? null) : null
+  const tbMove =
+    tbResult.status === 'fulfilled' ? authoritativeTablebaseBestUci(tbResult.value) : null
   if (tbMove) return tbMove
   return engineResult.status === 'fulfilled' ? (engineResult.value[0]?.moves[0] ?? null) : null
 }
