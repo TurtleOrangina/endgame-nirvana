@@ -1,4 +1,12 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
@@ -18,6 +26,16 @@ const ENGINE_FILES = [
   'stockfish-18-lite-single.wasm',
 ]
 
+// Bump to publish the engine assets under a fresh URL without their contents changing.
+// Needed when only the *serving* of those files changes in a way a client cannot pick up
+// on its own — they carry a one-year `immutable` Cache-Control (see public/_headers), so
+// a stored response is never revalidated and a new URL is the only way to evict it. This
+// is not hypothetical: copies cached before the COOP/COEP headers existed lack
+// `Cross-Origin-Embedder-Policy`, and a cross-origin isolated page refuses to start a
+// worker from such a response — leaving the app permanently stuck on "Loading engine…"
+// until the user clears their site data by hand.
+const ENGINE_ASSET_GENERATION = 2
+
 // SharedArrayBuffer (required by the multi-threaded engine build) only exists in
 // cross-origin isolated contexts; production sets the same headers in public/_headers.
 const crossOriginIsolationHeaders = {
@@ -25,18 +43,48 @@ const crossOriginIsolationHeaders = {
   'Cross-Origin-Embedder-Policy': 'require-corp',
 }
 
+// Identifies this build to the client. Used to scope the engine's multi-threading
+// failover flag, so a redeploy always gets a fresh attempt at the multi-threaded engine
+// rather than inheriting a previous build's verdict about it.
+const appBuildId = new Date().toISOString()
+
+function engineAssetHash(): string {
+  const hash = createHash('sha256').update(`generation:${ENGINE_ASSET_GENERATION}`)
+  for (const f of ENGINE_FILES) hash.update(readFileSync(path.join(stockfishBinDir, f)))
+  return hash.digest('hex').slice(0, 10)
+}
+
+// Stages the engine files under a content-hashed directory (rather than hashed
+// filenames: the engine locates its own .wasm by basename relative to the script URL,
+// so the pair has to keep their names and move together) and hands the client the
+// resulting base path.
 function stockfishPlugin(): Plugin {
   return {
     name: 'stockfish-engines',
-    configResolved() {
-      const destDir = path.join(projectRoot, 'public', 'engines')
+    config() {
+      const enginesRoot = path.join(projectRoot, 'public', 'engines')
+      const version = engineAssetHash()
+      const destDir = path.join(enginesRoot, version)
       mkdirSync(destDir, { recursive: true })
+
+      // Previous versions would otherwise pile up in dist/ forever
+      for (const entry of readdirSync(enginesRoot)) {
+        if (entry !== version) rmSync(path.join(enginesRoot, entry), { recursive: true })
+      }
+
       for (const f of ENGINE_FILES) {
         const dest = path.join(destDir, f)
         if (!existsSync(dest)) {
-          console.log(`[stockfish] Copying ${f} to public/engines/ …`)
+          console.log(`[stockfish] Copying ${f} to public/engines/${version}/ …`)
           copyFileSync(path.join(stockfishBinDir, f), dest)
         }
+      }
+
+      return {
+        define: {
+          __STOCKFISH_ENGINE_BASE_PATH__: JSON.stringify(`/engines/${version}/`),
+          __APP_BUILD_ID__: JSON.stringify(appBuildId),
+        },
       }
     },
   }

@@ -15,5 +15,9 @@
 /data/*
   Cache-Control: public, max-age=31536000, immutable
 
+# The engine lives under a content-hashed directory (/engines/<version>/…) — the splat
+# spans slashes, so it covers the nested files. Never serve unversioned engine files
+# under this rule: `immutable` is never revalidated, and a bad copy is then unfixable
+# without the user clearing their site data (see ENGINE_ASSET_GENERATION in vite.config.ts).
 /engines/*
   Cache-Control: public, max-age=31536000, immutable

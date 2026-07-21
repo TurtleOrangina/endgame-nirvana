@@ -27,17 +27,30 @@ export function supportsMultiThreading(): boolean {
   return typeof SharedArrayBuffer !== 'undefined' && crossOriginIsolated
 }
 
-// Watchdog for the multi-threaded build's boot: its thread bootstrap can hang silently
-// in the field (no error, just no readyok) in ways a fresh profile doesn't reproduce.
-// When it fires, the engine restarts with the single-threaded build, and that choice is
-// remembered for a day so subsequent loads don't hang again before falling back.
+// Content-hashed directory the engine files are published under (see vite.config.ts).
+// They are served immutable for a year, so a fix that changes how they must be loaded
+// only reaches already-cached clients under a new path.
+const ENGINE_BASE_PATH = __STOCKFISH_ENGINE_BASE_PATH__
+
+// Watchdog for the engine's boot: the multi-threaded build's thread bootstrap can hang
+// silently in the field (no error, just no readyok) in ways a fresh profile doesn't
+// reproduce, and a worker script the browser refuses to load fails just as quietly.
+// Every build is watched, because a fallback path with no watchdog of its own is a dead
+// end the user cannot get out of by reloading.
 const BOOT_WATCHDOG_TIMEOUT_MS = 15_000
 const FORCE_SINGLE_THREADED_KEY = 'engineForceSingleThreadedUntil'
 const FORCE_SINGLE_THREADED_TTL_MS = 24 * 60 * 60 * 1000
 
+// The failover verdict is scoped to the build that reached it: a redeploy may well be
+// the one fixing multi-threading, and must not inherit the old build's conclusion —
+// especially since nothing but a successful multi-threaded boot clears the flag, and
+// that boot is never attempted while it is set. Values from before this scoping existed
+// were bare timestamps, which fail the build check and are ignored.
 function isMultiThreadingBlockedByEarlierFailure(): boolean {
   try {
-    return Date.now() < Number(localStorage.getItem(FORCE_SINGLE_THREADED_KEY) ?? 0)
+    const [buildId, expiresAt] = (localStorage.getItem(FORCE_SINGLE_THREADED_KEY) ?? '').split('|')
+    if (buildId !== __APP_BUILD_ID__) return false
+    return Date.now() < Number(expiresAt ?? 0)
   } catch {
     return false
   }
@@ -48,7 +61,7 @@ function setMultiThreadingBlocked(blocked: boolean): void {
     if (blocked) {
       localStorage.setItem(
         FORCE_SINGLE_THREADED_KEY,
-        String(Date.now() + FORCE_SINGLE_THREADED_TTL_MS),
+        `${__APP_BUILD_ID__}|${Date.now() + FORCE_SINGLE_THREADED_TTL_MS}`,
       )
     } else {
       localStorage.removeItem(FORCE_SINGLE_THREADED_KEY)
@@ -119,26 +132,66 @@ function createEngine(): StockfishEngine {
   // Which build the current worker runs — decided per boot, since a watchdog failover
   // switches to the single-threaded build even when multi-threading is supported.
   let usingMultiThreaded = false
+  let forcedToSingleThreadedThisLoad = false
+  // Last rung of the recovery ladder below, used at most once per page load
+  let cacheBypassToken: number | null = null
   let bootWatchdog: ReturnType<typeof setTimeout> | undefined
 
   // (Re-)armed on boot and on every download-progress event, so a slow engine download
   // never counts against the timeout — only a silent post-download hang does.
   function armBootWatchdog(): void {
-    if (!usingMultiThreaded || isReady.value) return
+    if (isReady.value) return
     clearTimeout(bootWatchdog)
-    bootWatchdog = setTimeout(failOverToSingleThreaded, BOOT_WATCHDOG_TIMEOUT_MS)
+    bootWatchdog = setTimeout(recoverFromBootFailure, BOOT_WATCHDOG_TIMEOUT_MS)
   }
 
-  function failOverToSingleThreaded(): void {
-    console.warn(
-      'Multi-threaded engine failed to become ready — restarting with the ' +
-        'single-threaded build (and keeping it for 24h).',
-    )
-    setMultiThreadingBlocked(true)
+  function engineScriptUrl(): string {
+    const file = usingMultiThreaded ? 'stockfish-18-lite.js' : 'stockfish-18-lite-single.js'
+    // The engine assets are served immutable, so a stored response that the browser
+    // won't accept as a worker script (e.g. one cached before the COOP/COEP headers
+    // existed, which a cross-origin isolated page rejects) can only be got around by
+    // requesting a URL that isn't in the cache under that key. The query string is
+    // dropped when the engine derives its .wasm location from the script URL.
+    const url = `${ENGINE_BASE_PATH}${file}`
+    return cacheBypassToken === null ? url : `${url}?cache-bypass=${cacheBypassToken}`
+  }
+
+  // Ladder walked when the engine never reaches readyok: multi-threaded → single-threaded
+  // → single-threaded from a cache-bypassing URL. Every rung must lead somewhere; a boot
+  // failure with nowhere left to go used to leave the UI on "Loading engine…" forever,
+  // across reloads and reinstalls, recoverable only by clearing site data by hand.
+  function recoverFromBootFailure(): void {
     clearTimeout(bootWatchdog)
     worker.terminate()
     downloadProgress.value = null
-    startEngine()
+
+    if (usingMultiThreaded) {
+      console.warn(
+        'Multi-threaded engine failed to become ready — restarting with the ' +
+          'single-threaded build (and keeping it for up to 24h on this build).',
+      )
+      setMultiThreadingBlocked(true)
+      forcedToSingleThreadedThisLoad = true
+      startEngine()
+      return
+    }
+
+    if (cacheBypassToken === null) {
+      console.warn(
+        'Single-threaded engine failed to become ready — retrying from a ' +
+          'cache-bypassing URL in case the cached copy is unusable.',
+      )
+      cacheBypassToken = Date.now()
+      startEngine()
+      return
+    }
+
+    // Out of rungs. Drop the failover block so the next load starts over from the
+    // multi-threaded build instead of going straight back to what just failed twice.
+    console.error(
+      'Engine failed to boot on every fallback path — the next load will retry from scratch.',
+    )
+    setMultiThreadingBlocked(false)
   }
 
   // `setoption name Threads` rebuilds the engine's thread pool (spawning that many WASM
@@ -202,11 +255,12 @@ function createEngine(): StockfishEngine {
           'app shell?) — falling back to the single-threaded engine.',
       )
     }
-    usingMultiThreaded = supportsMultiThreading() && !isMultiThreadingBlockedByEarlierFailure()
+    usingMultiThreaded =
+      supportsMultiThreading() &&
+      !forcedToSingleThreadedThisLoad &&
+      !isMultiThreadingBlockedByEarlierFailure()
     appliedThreads = null
-    worker = new Worker(
-      usingMultiThreaded ? '/engines/stockfish-18-lite.js' : '/engines/stockfish-18-lite-single.js',
-    )
+    worker = new Worker(engineScriptUrl())
     armBootWatchdog()
 
     worker.onmessage = (event: MessageEvent<string>) => {
@@ -314,10 +368,10 @@ function createEngine(): StockfishEngine {
     }
 
     worker.onerror = () => {
-      // A crash before ready on the multi-threaded build → try the single build now
-      // instead of waiting for the watchdog
-      if (!isReady.value && usingMultiThreaded) {
-        failOverToSingleThreaded()
+      // A crash (or a worker script the browser refused to load) before ready → take the
+      // next rung now instead of waiting out the watchdog
+      if (!isReady.value) {
+        recoverFromBootFailure()
         return
       }
       resolveAnalysis?.([])
