@@ -227,12 +227,17 @@ export const useSyncStore = defineStore('sync', () => {
       // cloud row we just fetched is known-stale — applying it would overwrite
       // correct local progress with old data instead of leaving it queued.
       if (state.profile && !profileDirty.value && !lastSyncError.value) {
+        const eloBeforePull = useUserProfileStore().profile?.endgameElo ?? null
         useUserProfileStore().applyRemoteProfile(state.profile, state.attempts)
         useExercisesStore().rebuildFromRemoteAttempts(state.attempts)
         // A Lichess account linked mid signup-wizard (before this account's first
         // pull) isn't in the cloud profile yet — re-apply it so "cloud wins"
         // doesn't silently drop the link.
         useLichessAuth().applyPendingUsernameToProfile()
+        // The puzzle on the board was picked for the pre-pull Elo — after signing in
+        // that's the setup modal's default-level teaser, which can be nowhere near the
+        // account's real rating.
+        useExercisesStore().reselectAfterRemoteEloChange(eloBeforePull)
       }
 
       lastSyncError.value = null

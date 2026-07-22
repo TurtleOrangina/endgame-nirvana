@@ -10,6 +10,7 @@ export interface AuthActionResult {
   emailConfirmationRequired?: boolean
   invalidCredentials?: boolean
   emailNotConfirmed?: boolean
+  serverUnreachable?: boolean
 }
 
 // Kept only in memory (never persisted, unlike PendingRegistration) since it holds the
@@ -24,8 +25,12 @@ export interface AwaitingEmailConfirmation {
 // failures both stringify to a useless "{}" message (auth-js builds it via
 // JSON.stringify on a bare Response/Error, which has no own enumerable
 // properties) — show something a user can actually act on instead.
+function isServerUnreachable(error: AuthError): boolean {
+  return isAuthRetryableFetchError(error) || !error.message || error.message === '{}'
+}
+
 function friendlyAuthErrorMessage(error: AuthError): string {
-  if (isAuthRetryableFetchError(error) || !error.message || error.message === '{}') {
+  if (isServerUnreachable(error)) {
     return 'Could not reach the server. Please check your connection and try again.'
   }
   return error.message
@@ -222,6 +227,7 @@ export const useAuthStore = defineStore('auth', () => {
       error: friendlyAuthErrorMessage(error),
       invalidCredentials: error.code === 'invalid_credentials',
       emailNotConfirmed: error.code === 'email_not_confirmed',
+      serverUnreachable: isServerUnreachable(error),
     }
   }
 

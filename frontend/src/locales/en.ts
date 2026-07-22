@@ -173,6 +173,11 @@ export const en = {
       'Could not create your account. You can retry, or continue without an account and retry later from your profile page.',
     errorInvalidCredentials:
       'Wrong email or password. If you have forgotten your password, you can reset it via email.',
+    errorServerUnreachable:
+      'Could not reach the server. Please check your connection and try again.',
+    errorServerUnreachableOfflineHint: 'Or create a',
+    errorServerUnreachableOfflineLink: 'New User',
+    errorServerUnreachableOfflineOutro: 'without account to continue offline.',
     emailAlreadyRegistered: 'This email is already registered.',
     logInInstead: 'Log in instead',
     sendResetEmail: 'Reset password via email',

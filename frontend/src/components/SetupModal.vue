@@ -102,6 +102,7 @@ const isSendingResetEmail = ref(false)
 const confirmationSentTo = ref<string | null>(null)
 const isLoggingIn = ref(false)
 const loginError = ref<string | null>(null)
+const isServerUnreachable = ref(false)
 
 // Only restored when returning from the Lichess OAuth redirect (see linkLichess) — the
 // step is saved too so the user lands back where they left off, not at the first page.
@@ -143,6 +144,7 @@ function selectMode(next: SetupMode): void {
   emailError.value = null
   emailAlreadyRegistered.value = false
   resetEmailSentTo.value = null
+  isServerUnreachable.value = false
 }
 
 async function sendPasswordResetEmail(): Promise<void> {
@@ -334,6 +336,7 @@ async function submitSignIn(): Promise<void> {
   errorMessage.value = null
   emailError.value = null
   resetEmailSentTo.value = null
+  isServerUnreachable.value = false
   if (!isValidEmail(email.value.trim())) {
     emailError.value = t((s) => s.common.enterValidEmail)
     return
@@ -342,9 +345,14 @@ async function submitSignIn(): Promise<void> {
   const result = await authStore.signIn(email.value, password.value)
   isSubmitting.value = false
   if (result.error) {
+    // Offline-first: signing in is the only step that truly needs the network, so point
+    // the user at the local-only flow instead of leaving them stuck at the login form.
+    isServerUnreachable.value = result.serverUnreachable === true
     errorMessage.value = result.invalidCredentials
       ? t((s) => s.setup.errorInvalidCredentials)
-      : result.error
+      : isServerUnreachable.value
+        ? t((s) => s.setup.errorServerUnreachable)
+        : result.error
     return
   }
   emit('close')
@@ -407,7 +415,16 @@ async function submitSignIn(): Promise<void> {
             />
           </label>
 
-          <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+          <p v-if="errorMessage" class="error-message">
+            {{ errorMessage }}
+            <template v-if="isServerUnreachable">
+              {{ t((s) => s.setup.errorServerUnreachableOfflineHint) }}
+              <button type="button" class="btn-inline-link" @click="selectMode('new')">
+                {{ t((s) => s.setup.errorServerUnreachableOfflineLink) }}
+              </button>
+              {{ t((s) => s.setup.errorServerUnreachableOfflineOutro) }}
+            </template>
+          </p>
           <p v-if="resetEmailSentTo" class="info-message">
             {{ t((s) => s.common.resetEmailSent, { email: resetEmailSentTo }) }}
           </p>
@@ -776,6 +793,20 @@ h2 {
   margin: 0;
   color: var(--btn-danger-fg);
   font-size: 0.85rem;
+}
+
+.btn-inline-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.btn-inline-link:hover {
+  color: var(--fg);
 }
 
 .info-message {

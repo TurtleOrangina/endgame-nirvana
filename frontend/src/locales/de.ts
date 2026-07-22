@@ -179,6 +179,11 @@ export const de: typeof en = {
       'Dein Konto konnte nicht erstellt werden. Du kannst es erneut versuchen oder ohne Konto fortfahren und es später auf deiner Profilseite erneut versuchen.',
     errorInvalidCredentials:
       'E-Mail oder Passwort falsch. Wenn du dein Passwort vergessen hast, kannst du es per E-Mail zurücksetzen.',
+    errorServerUnreachable:
+      'Der Server ist nicht erreichbar. Bitte prüfe deine Verbindung und versuche es erneut.',
+    errorServerUnreachableOfflineHint: 'Oder lege einen',
+    errorServerUnreachableOfflineLink: 'neuen Benutzer',
+    errorServerUnreachableOfflineOutro: 'ohne Konto an, um offline weiterzumachen.',
     emailAlreadyRegistered: 'Diese E-Mail-Adresse ist bereits registriert.',
     logInInstead: 'Stattdessen anmelden',
     sendResetEmail: 'Passwort per E-Mail zurücksetzen',
