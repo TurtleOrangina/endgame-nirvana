@@ -77,6 +77,18 @@ function eloChangeLabel(change: number): string {
   return change >= 0 ? `+${change}` : `${change}`
 }
 
+// A puzzle far above the user's rating rounds its Elo change to zero, so the sign
+// of the number alone would show a failed attempt as a green "+0".
+function historyEloChangeSign(entry: EloHistoryEntry): 'positive' | 'negative' {
+  if (entry.change === 0 && entry.solved === false) return 'negative'
+  return entry.change >= 0 ? 'positive' : 'negative'
+}
+
+function historyEloChangeLabel(entry: EloHistoryEntry): string {
+  if (entry.change === 0) return entry.solved === false ? '-0' : '+0'
+  return eloChangeLabel(entry.change)
+}
+
 function eloBandClass(puzzleElo: number): string {
   return puzzleDifficultyBand(puzzleElo, profile.value?.endgameElo ?? 1400)
 }
@@ -157,10 +169,8 @@ function onCardClick(entry: EloHistoryEntry): void {
                   : t((s) => s.app.resultDraw)
               }}
             </span>
-            <span
-              :class="['meta-chip elo-change', card.entry.change >= 0 ? 'positive' : 'negative']"
-            >
-              {{ eloChangeLabel(card.entry.change) }}
+            <span :class="['meta-chip elo-change', historyEloChangeSign(card.entry)]">
+              {{ historyEloChangeLabel(card.entry) }}
             </span>
           </div>
         </div>
