@@ -18,22 +18,22 @@
     {
       "fen": "8/6p1/8/7P/6k1/8/3K4/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 864
+      "difficulty": 844
     },
     {
       "fen": "8/8/4kb2/8/8/3K4/8/2Q5_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 694
+      "difficulty": 686
     },
     {
       "fen": "8/8/4kn2/8/8/3K4/8/2Q5_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1458
+      "difficulty": 1484
     },
     {
       "fen": "8/8/8/8/5k2/2RK4/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 721
+      "difficulty": 713
     },
     {
       "fen": "8/8/8/8/5k2/3K4/8/1Q6_w_-_-_0_1",
@@ -43,7 +43,7 @@
     {
       "fen": "K7/5B2/7B/8/4k3/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1255
+      "difficulty": 1206
     }
   ],
   "/Bishop vs Knight": [
@@ -135,7 +135,7 @@
     {
       "fen": "6n1/7k/2p2p2/8/P2P4/8/8/2B4K_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2150
+      "difficulty": 2156
     },
     {
       "fen": "6n1/7k/8/3p1p2/P7/B7/8/7K_w_-_-_0_1",
@@ -619,7 +619,7 @@
     {
       "fen": "1k6/8/1K6/3N1B2/8/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1289
+      "difficulty": 1300
     },
     {
       "fen": "5k2/5N2/5K2/5B2/8/8/8/8_w_-_-_0_1",
@@ -1257,7 +1257,7 @@
     {
       "fen": "8/b7/P7/3B4/4P1k1/8/6K1/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2150
+      "difficulty": 2157
     },
     {
       "fen": "8/b7/P7/3Bk3/2K1P3/8/8/8_w_-_-_0_1",
@@ -1279,7 +1279,7 @@
     {
       "fen": "8/1p6/8/3k4/PP6/2K5/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1533
+      "difficulty": 1536
     },
     {
       "fen": "8/1p6/8/K1k5/P7/8/1P6/8_w_-_-_0_1",
@@ -1289,7 +1289,7 @@
     {
       "fen": "8/3k4/3p4/8/3PPK2/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1601
+      "difficulty": 1604
     },
     {
       "fen": "8/6p1/8/7p/5k2/7K/6P1/8_w_-_-_0_1",
@@ -1339,7 +1339,7 @@
     {
       "fen": "8/8/4k2p/8/5KPP/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1601
+      "difficulty": 1604
     },
     {
       "fen": "8/8/4k3/3p4/8/3PPK2/8/8_w_-_-_0_1",
@@ -1369,12 +1369,12 @@
     {
       "fen": "8/8/8/1pk5/8/1PPK4/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1486
+      "difficulty": 1509
     },
     {
       "fen": "8/8/8/8/pp1k4/8/PK6/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1551
+      "difficulty": 1505
     },
     {
       "fen": "8/8/8/p1k5/8/PP6/8/1K6_w_-_-_0_1",
@@ -1389,7 +1389,7 @@
     {
       "fen": "8/8/p3kp2/1pp4P/6P1/8/PP6/K7_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1974
     },
     {
       "fen": "8/p1k5/8/2K5/8/P7/1P6/8_w_-_-_0_1",
@@ -1441,12 +1441,12 @@
     {
       "fen": "8/5p2/p1k3p1/6P1/PPK5/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1576
+      "difficulty": 1416
     },
     {
       "fen": "8/7p/1k4p1/1P6/1K4P1/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1574
+      "difficulty": 1513
     },
     {
       "fen": "8/7p/6p1/1k1p4/3P2P1/1K6/7P/8_w_-_-_0_1",
@@ -1456,22 +1456,22 @@
     {
       "fen": "8/8/1k3p2/5Pp1/KP4P1/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1494
     },
     {
       "fen": "8/8/1k6/1p5p/1K5P/8/8/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1575
+      "difficulty": 1516
     },
     {
       "fen": "8/8/1p4p1/6P1/PPk2K2/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1539
+      "difficulty": 1491
     },
     {
       "fen": "8/8/3k3p/3P3P/2K5/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1436
+      "difficulty": 1381
     },
     {
       "fen": "8/8/4k3/p7/1p2Pp2/1P6/P4KP1/8_w_-_-_0_1",
@@ -1486,7 +1486,7 @@
     {
       "fen": "8/8/8/1k5p/7P/1PK5/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1577
+      "difficulty": 1515
     },
     {
       "fen": "8/8/8/k1p5/2P5/1K6/P7/8_w_-_-_0_1",
@@ -1518,12 +1518,12 @@
     {
       "fen": "4K3/8/2p5/8/P2k4/8/P7/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1971
     },
     {
       "fen": "8/1p6/8/p1K5/8/1PP2k1p/P6P/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1619
     },
     {
       "fen": "8/1p6/p3k2p/6p1/8/5K2/PPP4P/8_w_-_-_0_1",
@@ -1543,7 +1543,7 @@
     {
       "fen": "8/6p1/4K3/6p1/1k4P1/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1537
+      "difficulty": 1559
     },
     {
       "fen": "8/6p1/7k/8/1K6/8/1P6/8_w_-_-_0_1",
@@ -1625,22 +1625,22 @@
     {
       "fen": "5K2/8/8/6k1/8/1p6/1P6/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1575
+      "difficulty": 1532
     },
     {
       "fen": "8/1p6/1P6/8/7K/8/8/1k6_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1602
     },
     {
       "fen": "8/1p6/2p5/2P5/1P1k4/1K6/8/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2000
+      "difficulty": 2037
     },
     {
       "fen": "8/2k5/8/3Pp3/8/p4K2/P7/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1575
+      "difficulty": 1593
     },
     {
       "fen": "8/2pK4/1kP4p/8/8/8/7P/8_w_-_-_0_1",
@@ -1660,7 +1660,7 @@
     {
       "fen": "8/5p1R/8/8/4Kp2/5P2/6kp/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1615
     },
     {
       "fen": "8/6kp/3p4/3P2P1/7K/8/8/8_w_-_-_0_1",
@@ -1685,7 +1685,7 @@
     {
       "fen": "8/8/3k4/2p5/p1P1Pp2/8/1P2K3/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1576
+      "difficulty": 1578
     },
     {
       "fen": "8/8/3p2p1/k1p2p1p/2P2P1P/pPK3P1/P7/8_w_-_-_0_1",
@@ -1710,7 +1710,7 @@
     {
       "fen": "8/8/8/5p2/3k4/5P2/8/6K1_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1568
+      "difficulty": 1585
     },
     {
       "fen": "8/8/8/7k/3p2p1/3P4/6KP/8_w_-_-_0_1",
@@ -1844,7 +1844,7 @@
     {
       "fen": "8/p5k1/5ppp/1p1p2P1/1P1P1K1P/8/P4P2/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 2038
     },
     {
       "fen": "8/p6p/8/1ppk4/6P1/2PK4/P6P/8_w_-_-_0_1",
@@ -1886,7 +1886,7 @@
     {
       "fen": "4k3/4p3/8/8/8/8/8/4K3_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2000
+      "difficulty": 2037
     },
     {
       "fen": "5k2/8/4K3/5P2/8/8/8/8_w_-_-_0_1",
@@ -1901,7 +1901,7 @@
     {
       "fen": "5k2/8/8/8/1P6/8/8/3K4_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1970
     },
     {
       "fen": "5k2/8/8/8/3PK3/8/8/8_w_-_-_0_1",
@@ -1931,7 +1931,7 @@
     {
       "fen": "8/1k6/8/R1K5/2P5/8/8/1r6_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1604
     },
     {
       "fen": "8/1p6/8/5k2/2P4p/4KP2/6P1/8_w_-_-_0_1",
@@ -1971,7 +1971,7 @@
     {
       "fen": "8/6k1/8/6K1/8/6P1/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1578
+      "difficulty": 1594
     },
     {
       "fen": "8/6p1/6P1/8/K7/8/8/6k1_w_-_-_0_1",
@@ -1996,7 +1996,7 @@
     {
       "fen": "8/8/3kp3/8/8/5K2/8/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1537
+      "difficulty": 1486
     },
     {
       "fen": "8/8/3p4/2k5/4P3/8/8/1K6_w_-_-_0_1",
@@ -2021,7 +2021,7 @@
     {
       "fen": "8/8/5p2/8/4P1k1/8/7K/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1616
     },
     {
       "fen": "8/8/8/1kp5/8/8/8/K7_w_-_-_0_1",
@@ -2036,7 +2036,7 @@
     {
       "fen": "8/8/8/2p1K3/1pP5/pP6/P1k5/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2000
+      "difficulty": 1972
     },
     {
       "fen": "8/8/8/3kp3/8/8/8/3K4_w_-_-_0_1",
@@ -2046,7 +2046,7 @@
     {
       "fen": "8/8/8/3p4/5k2/3P4/8/2K5_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1568
+      "difficulty": 1569
     },
     {
       "fen": "8/8/8/6pk/4K2p/3R2rP/8/8_w_-_-_0_1",
@@ -2061,12 +2061,12 @@
     {
       "fen": "8/8/8/8/8/5kp1/7K/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1615
     },
     {
       "fen": "8/8/kP6/2K5/1P6/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1972
     },
     {
       "fen": "8/p7/Pk2K3/1pp5/2P5/1P6/8/8_w_-_-_0_1",
@@ -2143,12 +2143,12 @@
     {
       "fen": "8/8/4k3/8/8/3KP3/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1572
+      "difficulty": 1524
     },
     {
       "fen": "8/8/6k1/2p1p3/p1P1P3/P5K1/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1550
+      "difficulty": 1561
     },
     {
       "fen": "8/8/6k1/5p1p/5P1K/8/7P/8_w_-_-_0_1",
@@ -2185,7 +2185,7 @@
     {
       "fen": "2krr3/2p5/4pq2/8/7P/3R4/2PR4/2KQ4_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1504
+      "difficulty": 1531
     },
     {
       "fen": "3r4/6p1/1ppk1b2/p4Rp1/2PpR3/3K4/PP4PP/8_w_-_-_0_1",
@@ -2205,7 +2205,7 @@
     {
       "fen": "4k3/2p4p/8/5pP1/P4P2/8/8/4K3_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1501
+      "difficulty": 1449
     },
     {
       "fen": "7k/p7/1p3p2/8/3P4/PP3K2/8/8_w_-_-_0_1",
@@ -2215,12 +2215,12 @@
     {
       "fen": "8/1p6/1p2k1p1/1P2p3/P1P1K2P/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1973
     },
     {
       "fen": "8/1p6/4k1p1/1p6/1P2KPP1/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1441
+      "difficulty": 1400
     },
     {
       "fen": "8/1p6/p3k3/4P2p/P2PK3/8/8/8_w_-_-_0_1",
@@ -2230,7 +2230,7 @@
     {
       "fen": "8/2k2p2/p3ppp1/8/1P6/P4P2/6PP/1K6_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1973
     },
     {
       "fen": "8/2p5/1p1p1k2/1P6/P4KP1/8/8/8_w_-_-_0_1",
@@ -2245,12 +2245,12 @@
     {
       "fen": "8/5p2/1p6/p7/3k4/8/PP4KP/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1501
+      "difficulty": 1523
     },
     {
       "fen": "8/5p2/p1k3p1/3p3p/PP1K3P/6P1/5P2/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1437
+      "difficulty": 1465
     },
     {
       "fen": "8/6pp/1pp1k3/8/PK6/8/2P3PP/8_w_-_-_0_1",
@@ -2265,7 +2265,7 @@
     {
       "fen": "8/7p/4kp2/8/PK2pP2/8/7P/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1586
+      "difficulty": 1599
     },
     {
       "fen": "8/8/2k5/4pppp/8/P3KPP1/7P/8_w_-_-_0_1",
@@ -2280,7 +2280,7 @@
     {
       "fen": "8/8/3k4/1p2p3/1P2K3/8/7P/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1503
+      "difficulty": 1464
     },
     {
       "fen": "8/8/3k4/pp3P2/4K3/8/1P6/8_w_-_-_0_1",
@@ -2290,7 +2290,7 @@
     {
       "fen": "8/8/4k2p/3p4/4p3/P1P1K3/7P/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1550
+      "difficulty": 1552
     },
     {
       "fen": "8/8/5kpK/p1p5/P1P4P/8/2P5/8_w_-_-_0_1",
@@ -2305,22 +2305,22 @@
     {
       "fen": "8/8/6p1/4k3/P1p1P3/4K1PP/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1503
+      "difficulty": 1401
     },
     {
       "fen": "8/8/8/1p2kp2/1P4p1/4KP2/5P2/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1504
+      "difficulty": 1523
     },
     {
       "fen": "8/p3k1pp/8/1PpPp3/8/P7/5KPP/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1501
+      "difficulty": 1522
     },
     {
       "fen": "8/pp2pk2/8/8/8/8/PP3K1P/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1501
+      "difficulty": 1521
     },
     {
       "fen": "8/pp4pp/2nk1p2/5P2/3prNP1/P1P4P/1P6/2KR4_w_-_-_0_1",
@@ -2367,7 +2367,7 @@
     {
       "fen": "8/1p6/1k6/4P3/8/8/7K/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2000
+      "difficulty": 1970
     },
     {
       "fen": "8/1p6/5K2/5p2/k7/3P4/8/8_w_-_-_0_1",
@@ -2402,7 +2402,7 @@
     {
       "fen": "8/6p1/8/7k/4PK2/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1569
+      "difficulty": 1587
     },
     {
       "fen": "8/6p1/p6p/P5P1/1k3P2/2p5/2K5/8_w_-_-_0_2",
@@ -2467,7 +2467,7 @@
     {
       "fen": "8/8/p3p2p/4p1k1/PK2P3/5P2/1P6/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2000
+      "difficulty": 2038
     },
     {
       "fen": "8/8/p7/kp2K3/4P3/8/8/8_w_-_-_0_1",
@@ -2512,7 +2512,7 @@
     {
       "fen": "8/Pkp5/5p2/1p5p/1P1K3P/6P1/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1972
     },
     {
       "fen": "K7/8/8/2p5/Pp6/8/1P5k/8_w_-_-_0_1",
@@ -2522,14 +2522,19 @@
   ],
   "/Pawn Endgames/Pawn on 7th vs Queen": [
     {
+      "fen": "7K/8/8/1p6/8/8/PPP5/4k3 w - - 0 1",
+      "expected_result": "win",
+      "difficulty": 2150
+    },
+    {
       "fen": "1Q6/8/8/8/1K6/8/4pk2/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1566
+      "difficulty": 1569
     },
     {
       "fen": "7Q/8/8/3K4/8/8/2pk4/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1576
+      "difficulty": 1592
     },
     {
       "fen": "8/2P5/8/8/8/k2K4/p7/8_w_-_-_0_1",
@@ -2549,7 +2554,7 @@
     {
       "fen": "8/5P2/3K4/8/8/1k6/8/q7_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1617
     },
     {
       "fen": "8/5P2/6K1/8/1q6/8/5k2/8_w_-_-_0_1",
@@ -2559,7 +2564,7 @@
     {
       "fen": "8/6K1/7P/8/1q6/8/5k2/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1614
     },
     {
       "fen": "8/8/8/1Q6/2K5/8/1pk5/8_w_-_-_0_1",
@@ -2589,7 +2594,7 @@
     {
       "fen": "8/Q7/8/6K1/8/8/4kp2/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1972
     },
     {
       "fen": "8/Q7/8/8/6K1/8/5pk1/8_w_-_-_0_1",
@@ -2599,7 +2604,7 @@
     {
       "fen": "8/Q7/8/8/8/3K4/5pk1/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1577
+      "difficulty": 1529
     },
     {
       "fen": "8/Q7/8/8/8/8/3K1pk1/8_w_-_-_0_1",
@@ -2621,7 +2626,7 @@
     {
       "fen": "8/3k4/1p6/pP1K4/8/8/8/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2000
+      "difficulty": 2035
     },
     {
       "fen": "8/6k1/1p6/pP6/8/8/2K5/8_w_-_-_0_1",
@@ -2646,7 +2651,7 @@
     {
       "fen": "8/8/4k3/3pP3/3P4/8/8/6K1_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2000
+      "difficulty": 1970
     },
     {
       "fen": "8/8/4k3/6p1/2pPpP2/4P2P/6K1/8_w_-_-_0_1",
@@ -2661,7 +2666,7 @@
     {
       "fen": "8/8/8/8/p1k5/Pp6/1K6/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1548
     },
     {
       "fen": "8/8/8/p3kPp1/6P1/4K3/8/8_w_-_-_0_1",
@@ -2671,17 +2676,17 @@
     {
       "fen": "8/8/8/pPk5/P7/2K5/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1603
     },
     {
       "fen": "8/8/p1pPkpp1/PpP5/1P3P2/6K1/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1603
     },
     {
       "fen": "8/k7/6p1/3K2Pp/8/8/8/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2000
+      "difficulty": 2037
     }
   ],
   "/Pawn Endgames/Reserve Tempi": [
@@ -2723,7 +2728,7 @@
     {
       "fen": "8/5p1p/p7/4K1P1/7k/8/P7/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1613
     },
     {
       "fen": "8/5p2/4p2p/p3P2P/2K1PP2/k7/8/8_w_-_-_0_1",
@@ -2897,7 +2902,7 @@
     {
       "fen": "8/2p5/8/8/5P1k/p7/7P/2K5_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1579
+      "difficulty": 1596
     },
     {
       "fen": "8/3p1kP1/5P2/8/4p1K1/8/8/8_w_-_-_0_1",
@@ -2937,7 +2942,7 @@
     {
       "fen": "8/8/6k1/8/5P1P/8/8/K7_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1566
+      "difficulty": 1509
     },
     {
       "fen": "8/8/8/3p2p1/k2Pp3/P3P3/2P2K2/8_w_-_-_0_1",
@@ -2964,7 +2969,7 @@
     {
       "fen": "8/1p6/8/8/8/8/1P6/K6k_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1605
     },
     {
       "fen": "8/2p5/8/1k1P2p1/4K3/6P1/8/8_w_-_-_0_1",
@@ -2974,7 +2979,7 @@
     {
       "fen": "8/4k3/2K5/8/8/8/1P6/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1550
     },
     {
       "fen": "8/5p2/1p6/1P2K2k/8/8/8/8_w_-_-_0_1",
@@ -3029,7 +3034,7 @@
     {
       "fen": "8/8/8/7p/1p6/1P4Pk/5K2/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1614
     },
     {
       "fen": "8/p7/1p6/2p5/7k/2P5/P1P1K3/8_w_-_-_0_1",
@@ -3051,7 +3056,7 @@
     {
       "fen": "8/1k6/8/PK6/5pp1/8/6PP/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1616
     },
     {
       "fen": "8/1p6/2pk2p1/PP6/2P5/8/8/1K6_w_-_-_0_1",
@@ -3076,7 +3081,7 @@
     {
       "fen": "8/5p2/4p3/8/3P4/5k2/P7/5K2_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1606
+      "difficulty": 1607
     },
     {
       "fen": "8/5Q2/kp4p1/p5P1/1P1KpP2/4P3/8/1q6_w_-_-_0_1",
@@ -3096,7 +3101,7 @@
     {
       "fen": "8/8/1p2p3/2k2pP1/p4P2/8/1PK5/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1547
     },
     {
       "fen": "8/8/1p4p1/2p3P1/p1k4P/8/1P1K4/8_w_-_-_0_1",
@@ -3111,7 +3116,7 @@
     {
       "fen": "8/8/3p4/3P3P/4k3/2K2p2/8/8_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1600
+      "difficulty": 1549
     },
     {
       "fen": "8/8/4kp1p/pp1p4/2pP1PPP/P1P1K3/8/8_w_-_-_0_1",
@@ -3320,7 +3325,7 @@
     {
       "fen": "8/5p2/4p2p/1pk1P3/6PP/1K6/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1619
     },
     {
       "fen": "8/5p2/5p1p/1p1k4/1P3PPP/8/6K1/8_w_-_-_0_1",
@@ -3345,7 +3350,7 @@
     {
       "fen": "8/5ppp/8/5PPP/8/k7/8/K7_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1616
     },
     {
       "fen": "8/6p1/1p4P1/pPp2k2/2P2p2/P2P1K2/8/8_w_-_-_0_1",
@@ -3410,7 +3415,7 @@
     {
       "fen": "8/8/4p2p/p2k1ppP/1p1P2P1/1P1K1P2/P7/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1618
     },
     {
       "fen": "8/8/5p1p/4pP1P/1K2k1P1/8/8/8_w_-_-_0_1",
@@ -3435,7 +3440,7 @@
     {
       "fen": "8/8/6p1/2p1p1P1/2P1P3/1k1P4/3K4/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1600
+      "difficulty": 1616
     },
     {
       "fen": "8/8/8/3p1p1p/2kPpP1P/6P1/3K1P2/8_w_-_-_0_1",
@@ -4337,7 +4342,7 @@
     {
       "fen": "8/8/8/8/7q/5k2/6R1/6K1_b_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2050
+      "difficulty": 2018
     },
     {
       "fen": "8/K2k4/2q5/1R6/8/8/8/8_w_-_-_0_1",
@@ -4603,7 +4608,7 @@
     {
       "fen": "8/8/4k3/4p1K1/5r2/8/8/4R3_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 2060
+      "difficulty": 2090
     },
     {
       "fen": "8/8/8/2K5/2R3P1/3k4/r7/8_w_-_-_0_1",
@@ -4675,7 +4680,7 @@
     {
       "fen": "3K4/3P1k2/8/8/8/8/1R6/r7_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2019
+      "difficulty": 1986
     },
     {
       "fen": "3R4/8/8/8/8/3p4/1K1k4/3r4_w_-_-_0_1",
@@ -4979,7 +4984,7 @@
     {
       "fen": "8/8/4k3/8/1KP5/8/2r5/R7_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2063
+      "difficulty": 2030
     },
     {
       "fen": "8/8/5k2/1R3p2/4r3/2K5/8/8_w_-_-_0_1",
@@ -5248,12 +5253,12 @@
     {
       "fen": "2k2r2/8/1KP5/7R/8/8/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1900
+      "difficulty": 1937
     },
     {
       "fen": "2R5/8/8/8/7r/kp6/8/1K6_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1868
+      "difficulty": 1909
     },
     {
       "fen": "3k4/2r5/2PK4/3R4/8/8/8/8_w_-_-_0_1",
@@ -5440,7 +5445,7 @@
     {
       "fen": "7R/8/8/8/8/2k5/1p4r1/1K6_w_-_-_0_1",
       "expected_result": "draw",
-      "difficulty": 1900
+      "difficulty": 1881
     },
     {
       "fen": "8/1R6/8/2K5/8/5k2/1p6/1r6_w_-_-_0_1",
@@ -5490,7 +5495,7 @@
     {
       "fen": "8/P2k4/1K6/8/8/8/7R/1r6_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1900
+      "difficulty": 1881
     },
     {
       "fen": "8/R7/8/8/8/8/1r1p1K2/3k4_w_-_-_0_1",
@@ -5505,7 +5510,7 @@
     {
       "fen": "K1R5/P7/3k4/8/8/8/8/1r6_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 1900
+      "difficulty": 1945
     },
     {
       "fen": "r3K1k1/4P3/8/8/8/8/8/5R2_w_-_-_0_1",
@@ -5530,7 +5535,7 @@
     {
       "fen": "R7/6k1/P7/5p2/r4P2/4K3/8/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2061
+      "difficulty": 2092
     },
     {
       "fen": "R7/7r/8/8/8/3k4/2p5/2K5_w_-_-_0_1",
@@ -5815,6 +5820,11 @@
       "fen": "K7/2P4R/8/k7/8/8/2r4p/8_w_-_-_0_1",
       "expected_result": "win",
       "difficulty": 2335
+    },
+    {
+      "fen": "8/2r5/8/p4R2/1k6/8/7P/6K1 w - - 0 47",
+      "expected_result": "draw",
+      "difficulty": 2335
     }
   ],
   "/Rook Endgames/Stalemates": [
@@ -5923,7 +5933,7 @@
     {
       "fen": "8/1k6/5K2/6P1/p7/r7/5R2/8_w_-_-_0_1",
       "expected_result": "win",
-      "difficulty": 2167
+      "difficulty": 2189
     },
     {
       "fen": "8/4k3/1R5P/1p6/1P6/3p4/7r/3K4_w_-_-_0_1",
@@ -6991,6 +7001,11 @@
     }
   ],
   "/Rook vs Pawns/Shouldering": [
+    {
+      "fen": "8/8/8/5K2/5R2/6p1/7k/8 w - - 0 1",
+      "expected_result": "win",
+      "difficulty": 2300
+    },
     {
       "fen": "3R4/8/2K5/6p1/5k2/8/8/8_w_-_-_0_1",
       "expected_result": "win",
