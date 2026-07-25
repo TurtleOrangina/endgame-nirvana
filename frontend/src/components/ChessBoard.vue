@@ -1230,7 +1230,13 @@ function enterAnalysisMode(startPaused = false): void {
     isGameOver.value && lastEntry ? { index: lastIndex, fen: lastEntry.fen } : null
   analysisPaused.value = startPaused
   isAnalysisMode.value = true
+  // Browsing history outside analysis mode leaves `chess` on the latest position whenever
+  // the displayed one isn't resumable, so it must be resynced here — otherwise the board
+  // would be unlocked with the dests (and side to move) of a different position.
+  const displayedEntry = historyEntries.value[historyIndex.value]
+  if (displayedEntry && chess.fen() !== displayedEntry.fen) chess = new Chess(displayedEntry.fen)
   cg.set({
+    turnColor: toColor(chess.turn()),
     movable: { color: 'both', free: false, dests: buildDests(chess) },
   })
   onPositionChanged()
