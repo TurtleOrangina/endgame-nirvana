@@ -97,6 +97,10 @@ const emit = defineEmits<{
 }>()
 
 const boardEl = ref<HTMLElement | null>(null)
+const promotionPickerEl = ref<HTMLElement | null>(null)
+// Chessground completes a click-move on pointer-down, so the very event that opens the
+// picker would otherwise register as a click outside it and abort the move immediately.
+let promotionOpenedAt = 0
 let cg: Api | null = null
 let arrowInsetObserver: MutationObserver | null = null
 let chess: Chess | null = null
@@ -169,11 +173,17 @@ function computeMovesSinceZero(move: Move): number {
   return move.piece === 'p' || !!move.captured ? 0 : prev + 1
 }
 
+// The player's own pawns promote on the far edge of the board (the board is always
+// oriented for the player), the opponent's on the near edge.
+const isPromotionPickerAtTop = computed(
+  () => !!pendingPromotion.value && playerColor === pendingPromotion.value.color,
+)
+
 const promotionPickerStyle = computed(() => {
   if (!pendingPromotion.value) return {}
   const fileIndex = (pendingPromotion.value.dest as string).charCodeAt(0) - 97
   const col = playerColor === 'white' ? fileIndex : 7 - fileIndex
-  const atTop = playerColor === pendingPromotion.value.color
+  const atTop = isPromotionPickerAtTop.value
   return {
     left: `${col * 12.5}%`,
     top: atTop ? '0' : 'auto',
@@ -659,6 +669,7 @@ function rebuildChessAtLatestEntry(): Chess {
 }
 
 function requestPromotion(dest: Key, color: PlayerColor): Promise<PromotionPiece | null> {
+  promotionOpenedAt = performance.now()
   return new Promise((resolve) => {
     pendingPromotion.value = { dest, color, resolve }
   })
@@ -672,6 +683,31 @@ function selectPromotion(piece: PromotionPiece): void {
 function cancelPendingPromotion(): void {
   pendingPromotion.value?.resolve(null)
   pendingPromotion.value = null
+}
+
+// Puts the board back on the position currently in history — used after a move was
+// started but never committed (an aborted promotion, an illegal premove), where the
+// board is left showing a half-applied move.
+function restoreBoardToCurrentPosition(): void {
+  if (!chess || !cg) return
+  setCgState({
+    fen: boardFen(chess.fen()),
+    lastMove: historyEntries.value[historyIndex.value]?.lastMove,
+    turnColor: toColor(chess.turn()),
+    movable: {
+      color: isAnalysisMode.value ? 'both' : playerColor,
+      free: false,
+      dests: buildDests(chess),
+    },
+  })
+}
+
+// Gives up on a promotion the player never picked a piece for: the pawn goes back to
+// where it came from and the move is discarded.
+function abortPendingPromotion(): void {
+  if (!pendingPromotion.value) return
+  cancelPendingPromotion()
+  restoreBoardToCurrentPosition()
 }
 
 function setupBoard(fen: string): void {
@@ -1026,13 +1062,7 @@ async function processPlayerMove(
     playerMove = chess.move({ from: orig as string, to: dest as string, promotion })
   } catch {
     // Premove became illegal after the engine's reply — restore the board so the player can retry
-    const lastEntry = historyEntries.value[historyIndex.value]
-    setCgState({
-      fen: boardFen(chess.fen()),
-      lastMove: lastEntry?.lastMove,
-      turnColor: playerColor,
-      movable: { color: playerColor, free: false, dests: buildDests(chess) },
-    })
+    restoreBoardToCurrentPosition()
     return
   }
   const playerMoveSound = classifyMoveSound(playerMove, chess)
@@ -1160,12 +1190,28 @@ async function playBestMove(): Promise<void> {
   await processPlayerMove(orig, dest, promotion)
 }
 
+function onPointerDownOutsidePromotion(e: Event): void {
+  if (!pendingPromotion.value) return
+  if (e.timeStamp < promotionOpenedAt) return
+  if (e.target instanceof Node && promotionPickerEl.value?.contains(e.target)) return
+  abortPendingPromotion()
+}
+
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta'])
+
 function onKeyDown(e: KeyboardEvent): void {
   if (!cg) return
   // The training view stays mounted (v-show) while other pages are shown — board
   // shortcuts must not fire while the board isn't visible (display:none => null here).
   if (boardEl.value?.offsetParent === null) return
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+  // Any keystroke while the promotion picker is open means the player is done with it:
+  // abort the move and swallow the key rather than acting on it behind the picker.
+  if (pendingPromotion.value && !MODIFIER_KEYS.has(e.key)) {
+    e.preventDefault()
+    abortPendingPromotion()
+    return
+  }
   if (e.key === 'ArrowLeft') {
     e.preventDefault()
     stepBack()
@@ -1325,6 +1371,8 @@ function loadFen(fen: string): boolean {
 onMounted(() => {
   setupBoard(props.fen)
   document.addEventListener('keydown', onKeyDown)
+  document.addEventListener('mousedown', onPointerDownOutsidePromotion)
+  document.addEventListener('touchstart', onPointerDownOutsidePromotion)
 })
 watch(() => props.fen, setupBoard)
 watch(
@@ -1345,6 +1393,8 @@ onUnmounted(() => {
   cg = null
   chess = null
   document.removeEventListener('keydown', onKeyDown)
+  document.removeEventListener('mousedown', onPointerDownOutsidePromotion)
+  document.removeEventListener('touchstart', onPointerDownOutsidePromotion)
   clearTimeout(pinnedTooltipTimeout)
 })
 
@@ -1414,7 +1464,12 @@ defineExpose({
     </div>
     <template v-if="pendingPromotion">
       <div class="promotion-backdrop" />
-      <div class="promotion-picker cg-wrap" :style="promotionPickerStyle">
+      <div
+        ref="promotionPickerEl"
+        class="promotion-picker cg-wrap"
+        :class="{ 'from-bottom': !isPromotionPickerAtTop }"
+        :style="promotionPickerStyle"
+      >
         <div
           v-for="opt in PROMOTION_OPTIONS"
           :key="opt.piece"
@@ -1461,6 +1516,12 @@ defineExpose({
     0 0 0 2px rgba(0, 0, 0, 0.35),
     0 4px 20px rgba(0, 0, 0, 0.4);
   overflow: hidden;
+}
+
+/* The queen (first option) must always sit on the promotion square itself, so clicking
+   again without moving picks it — that means growing away from the board's near edge. */
+.promotion-picker.from-bottom {
+  flex-direction: column-reverse;
 }
 
 .promo-cell {
