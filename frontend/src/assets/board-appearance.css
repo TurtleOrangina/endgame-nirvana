@@ -1,0 +1,124 @@
+/* Appearance overrides for @lichess-org/chessground.
+
+   Board texture, coordinate colours and piece images are all read from CSS variables
+   set on :root by utils/boardAppearance.ts, so switching theme or piece set is a
+   variable update rather than a stylesheet swap — and only the assets the variables
+   currently point at are ever downloaded on demand.
+
+   The variables carry the defaults below only until the profile has loaded (App.vue
+   applies the stored choice); the fallbacks are the default wood4 board and maestro
+   pieces, so a first paint before that is never unstyled. */
+
+/* background-color shows only in the moment before the texture has decoded — a mid
+   wood4 tone, so that moment doesn't flash a different colour. */
+cg-board {
+  background-color: #a17d51;
+  background-image: var(--board-image, url('/board/wood4.webp'));
+  background-size: cover;
+}
+
+.cg-wrap piece.pawn.white {
+  background-image: var(--piece-wP, url('/piece/maestro/wP.svg'));
+}
+
+.cg-wrap piece.knight.white {
+  background-image: var(--piece-wN, url('/piece/maestro/wN.svg'));
+}
+
+.cg-wrap piece.bishop.white {
+  background-image: var(--piece-wB, url('/piece/maestro/wB.svg'));
+}
+
+.cg-wrap piece.rook.white {
+  background-image: var(--piece-wR, url('/piece/maestro/wR.svg'));
+}
+
+.cg-wrap piece.queen.white {
+  background-image: var(--piece-wQ, url('/piece/maestro/wQ.svg'));
+}
+
+.cg-wrap piece.king.white {
+  background-image: var(--piece-wK, url('/piece/maestro/wK.svg'));
+}
+
+.cg-wrap piece.pawn.black {
+  background-image: var(--piece-bP, url('/piece/maestro/bP.svg'));
+}
+
+.cg-wrap piece.knight.black {
+  background-image: var(--piece-bN, url('/piece/maestro/bN.svg'));
+}
+
+.cg-wrap piece.bishop.black {
+  background-image: var(--piece-bB, url('/piece/maestro/bB.svg'));
+}
+
+.cg-wrap piece.rook.black {
+  background-image: var(--piece-bR, url('/piece/maestro/bR.svg'));
+}
+
+.cg-wrap piece.queen.black {
+  background-image: var(--piece-bQ, url('/piece/maestro/bQ.svg'));
+}
+
+.cg-wrap piece.king.black {
+  background-image: var(--piece-bK, url('/piece/maestro/bK.svg'));
+}
+
+/* Coordinate font size: bump from 9 px to 12 px for readability */
+.cg-wrap coords {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.cg-wrap coords.files {
+  bottom: -0.2%;
+  left: +4.3%;
+}
+
+.cg-wrap coords.ranks {
+  top: -3.8%;
+  left: +1%;
+}
+
+/* Drawable square markers: SVG circles are hidden; colour tint divs are injected
+   via DOM in ChessBoard.vue and positioned/coloured with inline styles instead. */
+.cg-wrap .cg-shapes circle {
+  display: none !important;
+}
+
+.cg-wrap cg-board .sq-tint {
+  position: absolute;
+  width: 12.5%;
+  height: 12.5%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cg-wrap piece {
+  image-rendering: auto;
+}
+
+/* Coords on LIGHT squares → the theme's dark tone.
+   Ranks: DOM order 1→8, column-reverse for white puts rank 1 at bottom (dark a1),
+   so EVEN-indexed ranks (2,4,6,8) land on light squares.
+   Files: even-indexed files (b,d,f,h) land on light squares at rank 1. */
+.orientation-white .ranks :nth-child(even),
+.orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(odd),
+.orientation-black .files :nth-child(odd),
+coords.squares:nth-of-type(odd) :nth-child(even),
+coords.squares:nth-of-type(even) :nth-child(odd) {
+  color: var(--coord-on-light-square, rgba(64, 38, 16, 0.92));
+}
+
+/* Coords on DARK squares → the theme's light tone. */
+.orientation-white .ranks :nth-child(odd),
+.orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(even),
+.orientation-black .files :nth-child(even),
+coords.squares:nth-of-type(odd) :nth-child(odd),
+coords.squares:nth-of-type(even) :nth-child(even) {
+  color: var(--coord-on-dark-square, rgba(218, 182, 112, 0.95));
+}

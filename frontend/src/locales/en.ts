@@ -283,6 +283,10 @@ export const en = {
       light: 'Light',
       system: 'System',
     },
+    appearance: {
+      boardTitle: 'Board',
+      pieceSetTitle: 'Pieces',
+    },
     language: {
       title: 'Language',
       description: "Choose the app's language.",

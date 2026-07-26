@@ -2,17 +2,16 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import '@lichess-org/chessground/assets/chessground.base.css'
 import '@lichess-org/chessground/assets/chessground.brown.css'
-import '@/assets/pieces-maestro.css'
-import '@/assets/chess-wood.css'
+import '@/assets/board-appearance.css'
 import App from './App.vue'
-import { preloadEssentialImages } from '@/utils/preloadAssets'
 import { useBoardAudio } from '@/composables/useBoardAudio'
 import { registerServiceWorker } from '@/registerServiceWorker'
 
 // Kicked off before the engine's own (deferred, idle-scheduled) download so these
-// small, always-needed assets — every piece, every board sound — are requested first
-// and finish caching well ahead of it, keeping the app fully usable offline afterwards.
-preloadEssentialImages()
+// small, always-needed assets are requested first and finish caching well ahead of it,
+// keeping the app fully usable offline afterwards. The board and piece images are the
+// other half of this and are preloaded from App.vue instead, since which ones to fetch
+// first depends on the profile's appearance settings.
 useBoardAudio()
 // Only registered in production builds — under `vp dev` it would cache dev-server
 // responses (including ones from before a code change) and keep serving them stale

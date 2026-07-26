@@ -1,26 +1,21 @@
-import wP from '@/assets/pieces-maestro/wP.svg'
-import wN from '@/assets/pieces-maestro/wN.svg'
-import wB from '@/assets/pieces-maestro/wB.svg'
-import wR from '@/assets/pieces-maestro/wR.svg'
-import wQ from '@/assets/pieces-maestro/wQ.svg'
-import wK from '@/assets/pieces-maestro/wK.svg'
-import bP from '@/assets/pieces-maestro/bP.svg'
-import bN from '@/assets/pieces-maestro/bN.svg'
-import bB from '@/assets/pieces-maestro/bB.svg'
-import bR from '@/assets/pieces-maestro/bR.svg'
-import bQ from '@/assets/pieces-maestro/bQ.svg'
-import bK from '@/assets/pieces-maestro/bK.svg'
-import chessBoard from '@/assets/chess-board.svg'
-
-// Piece images are only fetched by the browser once a piece actually appears on the
-// board via its CSS class (see pieces-maestro.css), so a puzzle whose starting position
-// happens to lack e.g. a black queen would leave bQ.svg undownloaded — invisible if the
-// user goes offline before ever encountering one (say, via a promotion). Preloading every
-// piece up front (they're tiny) means the full set is always cached well before it's needed.
-const ESSENTIAL_IMAGE_URLS = [wP, wN, wB, wR, wQ, wK, bP, bN, bB, bR, bQ, bK, chessBoard]
+import {
+  BOARD_THEME_IDS,
+  boardImageUrl,
+  boardThemeOrDefault,
+  PIECE_SET_IDS,
+  pieceImageUrls,
+  pieceSetOrDefault,
+  type BoardThemeId,
+  type PieceSetId,
+} from '@/utils/boardAppearance'
 
 const INITIAL_RETRY_DELAY_MS = 5_000
 const MAX_RETRY_DELAY_MS = 5 * 60_000
+// The background prefetch alone is ~180 files. Firing them all at once would saturate
+// the connection the app itself needs (catalog, engine, tablebase), so downloads run a
+// few at a time; the active set is small enough to stay under this anyway.
+const MAX_PARALLEL_DOWNLOADS = 6
+const IDLE_PREFETCH_DELAY_MS = 10_000
 
 // fetch() rather than new Image(): an Image gave no completion signal, so on a bad
 // connection a piece whose download failed was silently never retried — leaving e.g. a
@@ -29,8 +24,47 @@ const MAX_RETRY_DELAY_MS = 5 * 60_000
 // confirmed downloaded; in production the requests also pass through the service
 // worker (public/sw.js), landing each response in its cache rather than relying on
 // the HTTP cache alone.
-export function preloadEssentialImages(): void {
-  void retryUntilAllDownloaded(ESSENTIAL_IMAGE_URLS)
+//
+// Piece images are only fetched by the browser once a piece actually appears on the
+// board via its CSS class (see assets/board-appearance.css), so a puzzle whose starting
+// position happens to lack e.g. a black queen would leave bQ.svg undownloaded — invisible
+// if the user goes offline before ever encountering one (say, via a promotion). Preloading
+// the whole active set up front (it's tiny) means it is always cached before it's needed.
+export function preloadActiveAppearanceAssets(
+  pieceSet: string | undefined,
+  boardTheme: string | undefined,
+): void {
+  void retryUntilAllDownloaded([
+    ...pieceImageUrls(pieceSetOrDefault(pieceSet)),
+    boardImageUrl(boardThemeOrDefault(boardTheme)),
+  ])
+}
+
+// The board themes and piece sets the user isn't currently using — ~500 KB over the
+// wire, against the ~14 MB the engine already pulls — are fetched once the app is idle, so
+// every option in the appearance settings can still be previewed and picked after the
+// user goes offline. Deliberately not part of the startup path: what the user is
+// actually looking at is preloaded first (preloadActiveAppearanceAssets above), and
+// this only fills the cache behind it.
+export function prefetchAllAppearanceAssets(
+  activePieceSet: string | undefined,
+  activeBoardTheme: string | undefined,
+): void {
+  const activeSet = pieceSetOrDefault(activePieceSet)
+  const activeTheme = boardThemeOrDefault(activeBoardTheme)
+  const urls = [
+    ...PIECE_SET_IDS.filter((id: PieceSetId) => id !== activeSet).flatMap(pieceImageUrls),
+    ...BOARD_THEME_IDS.filter((id: BoardThemeId) => id !== activeTheme).map(boardImageUrl),
+  ]
+  whenIdle(() => void retryUntilAllDownloaded(urls))
+}
+
+function whenIdle(run: () => void): void {
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: IDLE_PREFETCH_DELAY_MS })
+  } else {
+    setTimeout(run, IDLE_PREFETCH_DELAY_MS)
+  }
 }
 
 async function retryUntilAllDownloaded(urls: string[]): Promise<void> {
@@ -45,16 +79,25 @@ async function retryUntilAllDownloaded(urls: string[]): Promise<void> {
 }
 
 async function fetchAllReturningFailed(urls: string[]): Promise<string[]> {
-  const outcomes = await Promise.all(
-    urls.map(async (url) => {
-      try {
-        return { url, ok: (await fetch(url)).ok }
-      } catch {
-        return { url, ok: false }
+  const pending = [...urls]
+  const failed: string[] = []
+  const workers = Array.from({ length: Math.min(MAX_PARALLEL_DOWNLOADS, pending.length) }, () =>
+    (async () => {
+      for (let url = pending.shift(); url !== undefined; url = pending.shift()) {
+        if (!(await downloadedSuccessfully(url))) failed.push(url)
       }
-    }),
+    })(),
   )
-  return outcomes.filter((outcome) => !outcome.ok).map((outcome) => outcome.url)
+  await Promise.all(workers)
+  return failed
+}
+
+async function downloadedSuccessfully(url: string): Promise<boolean> {
+  try {
+    return (await fetch(url)).ok
+  } catch {
+    return false
+  }
 }
 
 // Resolves when the browser reports connectivity came back, or after delayMs at the

@@ -145,6 +145,16 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
 - `src/lib/supabaseClient.ts` — the shared Supabase client, `null` when unconfigured.
 - `src/utils/chess.ts` — SAN/figurine and UCI-line formatting helpers.
 - `src/utils/exerciseId.ts` — normalized-FEN exercise ids + the legacy `path::fen` migration.
+- `src/utils/boardAppearance.ts` — the board-theme and piece-set catalog (15 boards,
+  15 piece sets, all adopted from lichess — see
+  `public/board/ATTRIBUTION.md` and `public/piece/ATTRIBUTION.md`, and note two of
+  lichess's featured piece sets are deliberately excluded as non-redistributable).
+  Assets live at fixed paths under `public/board/` and `public/piece/<set>/`, so a
+  single static stylesheet (`src/assets/board-appearance.css`) covers all of them: it
+  only reads CSS variables, which `applyBoardTheme`/`applyPieceSet` point at the
+  selected files. No per-theme CSS is generated and the browser downloads only what
+  the variables currently reference; `preloadAssets.ts` fetches the active set first
+  and then, on idle, everything else, so all options stay selectable offline.
 - `src/types.ts` — shared domain types (results, engine, tablebase, profile).
 - `src/types/database.ts` — generated Supabase schema types (see Backend below).
 - `src/main.ts` — entry point; mounts the app and imports Chessground/board CSS.

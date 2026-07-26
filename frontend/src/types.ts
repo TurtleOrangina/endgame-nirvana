@@ -1,3 +1,5 @@
+import type { BoardThemeId, PieceSetId } from '@/utils/boardAppearance'
+
 export type GameResult = 'win' | 'draw' | 'loss'
 export enum PuzzleStatus {
   SOLVING = 'SOLVING',
@@ -71,6 +73,8 @@ export interface UserProfile {
   tablebaseMovesExpanded: boolean
   themeMode: ThemeMode
   language: Language
+  boardTheme: BoardThemeId
+  pieceSet: PieceSetId
   lichessUsername: string | null
   engineThreads: number
 }

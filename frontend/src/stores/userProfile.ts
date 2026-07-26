@@ -8,6 +8,14 @@ import type {
   Language,
 } from '@/types'
 import { detectBrowserLocale } from '@/utils/detectLocale'
+import {
+  DEFAULT_BOARD_THEME,
+  DEFAULT_PIECE_SET,
+  boardThemeOrDefault,
+  pieceSetOrDefault,
+  type BoardThemeId,
+  type PieceSetId,
+} from '@/utils/boardAppearance'
 import { defaultEngineThreads } from '@/composables/useStockfishEngine'
 import type { Tables } from '@/types/database'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
@@ -32,6 +40,10 @@ function loadProfile(): UserProfile | null {
     // Profiles created before the language feature don't have this field. A static
     // default (not browser re-detection), consistent with the other migrated fields.
     if (!profile.language) profile.language = 'en'
+    // Profiles created before the board/piece appearance settings don't have these
+    // fields; both defaults reproduce exactly how the board looked before they existed.
+    profile.boardTheme = boardThemeOrDefault(profile.boardTheme)
+    profile.pieceSet = pieceSetOrDefault(profile.pieceSet)
     // Profiles created before Lichess-linking was synced to the backend don't have this field.
     if (profile.lichessUsername === undefined) profile.lichessUsername = null
     // Profiles created before the engine-threads setting don't have this field.
@@ -99,6 +111,8 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       // Auto-detection is a one-time default at profile creation; afterwards the
       // stored (and possibly user-overridden) value always wins.
       language: detectBrowserLocale(),
+      boardTheme: DEFAULT_BOARD_THEME,
+      pieceSet: DEFAULT_PIECE_SET,
       lichessUsername,
       engineThreads: defaultEngineThreads(),
     }
@@ -200,6 +214,22 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     useSyncStore().markProfileDirty()
   }
 
+  function setBoardTheme(boardTheme: BoardThemeId): void {
+    const p = profile.value
+    if (!p) return
+    p.boardTheme = boardTheme
+    persistProfile(p)
+    useSyncStore().markProfileDirty()
+  }
+
+  function setPieceSet(pieceSet: PieceSetId): void {
+    const p = profile.value
+    if (!p) return
+    p.pieceSet = pieceSet
+    persistProfile(p)
+    useSyncStore().markProfileDirty()
+  }
+
   function setEngineThreads(threads: number): void {
     const p = profile.value
     if (!p) return
@@ -237,6 +267,8 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       tablebaseMovesExpanded?: boolean
       themeMode?: ThemeMode
       language?: Language
+      boardTheme?: BoardThemeId
+      pieceSet?: PieceSetId
       lichessUsername?: string | null
       engineThreads?: number
     } | null
@@ -264,6 +296,8 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       tablebaseMovesExpanded: settings?.tablebaseMovesExpanded ?? false,
       themeMode: settings?.themeMode ?? 'dark',
       language: settings?.language ?? 'en',
+      boardTheme: boardThemeOrDefault(settings?.boardTheme),
+      pieceSet: pieceSetOrDefault(settings?.pieceSet),
       lichessUsername: settings?.lichessUsername ?? null,
       engineThreads: settings?.engineThreads ?? defaultEngineThreads(),
     }
@@ -284,6 +318,8 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     setTablebaseMovesExpanded,
     setThemeMode,
     setLanguage,
+    setBoardTheme,
+    setPieceSet,
     setEngineThreads,
     setLichessUsername,
     applyRemoteProfile,

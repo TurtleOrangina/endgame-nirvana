@@ -15,6 +15,13 @@ import {
   type AppView,
 } from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
+import {
+  applyBoardTheme,
+  applyPieceSet,
+  boardThemeOrDefault,
+  pieceSetOrDefault,
+} from '@/utils/boardAppearance'
+import { prefetchAllAppearanceAssets, preloadActiveAppearanceAssets } from '@/utils/preloadAssets'
 import AppHeader from '@/components/AppHeader.vue'
 import SetupModal from '@/components/SetupModal.vue'
 import PasswordRecoveryModal from '@/components/PasswordRecoveryModal.vue'
@@ -103,6 +110,10 @@ onMounted(async () => {
   }
 
   window.addEventListener('popstate', handlePopState)
+
+  // Last, and only once the app is idle: the board themes and piece sets the user
+  // isn't currently using, so all of them stay selectable offline.
+  prefetchAllAppearanceAssets(profile.value?.pieceSet, profile.value?.boardTheme)
 })
 
 onUnmounted(() => {
@@ -139,6 +150,27 @@ systemThemeQuery.addEventListener('change', applySystemTheme)
 watch(
   () => profile.value?.themeMode,
   (mode) => applyTheme(mode ?? 'dark'),
+  { immediate: true },
+)
+
+// Until a profile exists (first run, setup wizard) the stylesheet's own fallbacks —
+// the same wood4 board and maestro pieces — are what's on screen, so there is no
+// visible switch when these first apply.
+watch(
+  () => profile.value?.boardTheme,
+  (boardTheme) => {
+    applyBoardTheme(boardThemeOrDefault(boardTheme))
+    preloadActiveAppearanceAssets(profile.value?.pieceSet, boardTheme)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => profile.value?.pieceSet,
+  (pieceSet) => {
+    applyPieceSet(pieceSetOrDefault(pieceSet))
+    preloadActiveAppearanceAssets(pieceSet, profile.value?.boardTheme)
+  },
   { immediate: true },
 )
 

@@ -291,6 +291,10 @@ export const de: typeof en = {
       light: 'Hell',
       system: 'System',
     },
+    appearance: {
+      boardTitle: 'Brett',
+      pieceSetTitle: 'Figuren',
+    },
     language: {
       title: 'Sprache',
       description: 'Wähle die Sprache der App.',

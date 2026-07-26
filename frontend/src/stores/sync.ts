@@ -178,6 +178,8 @@ export const useSyncStore = defineStore('sync', () => {
                 tablebaseMovesExpanded: profile.tablebaseMovesExpanded,
                 themeMode: profile.themeMode,
                 language: profile.language,
+                boardTheme: profile.boardTheme,
+                pieceSet: profile.pieceSet,
                 lichessUsername: profile.lichessUsername,
                 engineThreads: profile.engineThreads,
               },
