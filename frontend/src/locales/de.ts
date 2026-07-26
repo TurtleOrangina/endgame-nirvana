@@ -21,8 +21,6 @@ export const de: typeof en = {
     versus: 'vs',
     surrender: 'Aufgeben',
     surrenderTitle: 'Diese Aufgabe aufgeben',
-    takeBack: 'Zug zurück',
-    takeBackTitle: 'Letzten Zug zurücknehmen',
     retry: 'Nochmal',
     retryTitle: 'Aufgabe erneut versuchen',
     next: 'Weiter',

@@ -738,41 +738,6 @@ function resetBoard(): void {
   setupBoard(props.fen)
 }
 
-function takeBack(): void {
-  if (!chess || !cg) return
-  cancelPendingPromotion()
-
-  const entries = historyEntries.value
-  if (entries.length <= 1) return
-
-  const last = entries[entries.length - 1]
-  let targetLength = entries.length - 1
-  if (last?.movedBy === 'engine' && targetLength > 1) {
-    targetLength--
-  }
-
-  historyEntries.value = entries.slice(0, targetLength)
-  historyIndex.value = targetLength - 1
-
-  const targetEntry = historyEntries.value[historyIndex.value]
-  if (!targetEntry) return
-
-  moveGeneration++
-  isGameOver.value = false
-  isWaitingForEngineReply.value = false
-
-  chess = new Chess(targetEntry.fen)
-  playerColor = toColor(chess.turn())
-
-  setCgState({
-    fen: boardFen(targetEntry.fen),
-    lastMove: targetEntry.lastMove,
-    turnColor: playerColor,
-    movable: { color: playerColor, free: false, dests: buildDests(chess) },
-  })
-  onPositionChanged()
-}
-
 function makeMove(uci: string): void {
   if (!chess || !cg) return
   if (isViewingHistory() && !isAnalysisMode.value) return
@@ -1387,7 +1352,6 @@ defineExpose({
   isShowingGameEndText,
   displayedIsOutsideGoal,
   resetBoard,
-  takeBack,
   hasMoves,
   enterAnalysisMode,
   leaveAnalysisMode,

@@ -19,8 +19,6 @@ export const en = {
     versus: 'vs',
     surrender: 'Surrender',
     surrenderTitle: 'Give up this puzzle',
-    takeBack: 'Take back',
-    takeBackTitle: 'Take back your last move',
     retry: 'Retry',
     retryTitle: 'Retry this puzzle',
     next: 'Next',

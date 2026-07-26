@@ -609,16 +609,6 @@ async function onRetry(): Promise<void> {
   resetPuzzle()
 }
 
-function onTakeBack(): void {
-  if (puzzleStatus.value === PuzzleStatus.SOLVING) {
-    puzzleStatus.value = PuzzleStatus.FAILED
-  }
-  // The position we're rewinding to hasn't been re-evaluated yet — the next move will.
-  isWrongSolution.value = false
-  hideWrongSolutionFlash()
-  boardRef.value?.takeBack()
-}
-
 function onNext(): void {
   history.pushState(null, '', window.location.href)
   isWrongSolution.value = false
@@ -996,27 +986,6 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
 
                 <section v-if="puzzleStatus !== PuzzleStatus.SOLVING" class="actions">
                   <button
-                    class="btn-action btn-take-back"
-                    :disabled="!boardRef?.hasMoves"
-                    :title="t((s) => s.app.takeBackTitle)"
-                    @click="onTakeBack"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M9 14 4 9l5-5" />
-                      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
-                    </svg>
-                    {{ t((s) => s.app.takeBack) }}
-                  </button>
-
-                  <button
                     class="btn-action btn-retry"
                     :title="t((s) => s.app.retryTitle)"
                     @click="onRetry"
@@ -1034,6 +1003,21 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                       <path d="M3 3v5h5" />
                     </svg>
                     {{ t((s) => s.app.retry) }}
+                  </button>
+
+                  <button class="btn-action btn-analyse" @click="onAnalyse">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    </svg>
+                    {{ t((s) => s.app.analyse) }}
                   </button>
 
                   <button
@@ -1063,26 +1047,6 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
                 <div v-if="boardRef?.displayedIsOutsideGoal" class="wrong-solution">
                   {{ t((s) => s.app.wrongSolution) }}
                 </div>
-
-                <!-- Analyse button -->
-                <button
-                  v-if="puzzleStatus !== PuzzleStatus.SOLVING"
-                  class="btn-action btn-analyse"
-                  @click="onAnalyse"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                  </svg>
-                  {{ t((s) => s.app.analyse) }}
-                </button>
               </template>
 
               <!-- Stats area -->
@@ -1856,14 +1820,12 @@ body {
   cursor: default;
 }
 
-.btn-take-back,
 .btn-retry {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--fg);
 }
 
-.btn-take-back:hover:not(:disabled),
 .btn-retry:hover:not(:disabled) {
   background: var(--hover-bg);
 }
@@ -1893,7 +1855,6 @@ body {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--fg);
-  width: 100%;
 }
 
 .btn-analyse:hover {
