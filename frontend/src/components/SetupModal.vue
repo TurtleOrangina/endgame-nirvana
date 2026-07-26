@@ -683,6 +683,9 @@ async function submitSignIn(): Promise<void> {
 }
 
 .modal {
+  /* Tall enough for the tallest step (the "basics" one: subtitle + mode tabs +
+     name + level slider), so every step's action button lands in the same spot. */
+  --setup-modal-height: 580px;
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -694,7 +697,7 @@ async function submitSignIn(): Promise<void> {
   max-width: 420px;
   /* Keeps the dialog's overall height stable as the user steps through the
      wizard, so the "continue" button doesn't jump around between steps. */
-  min-height: 440px;
+  min-height: var(--setup-modal-height);
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
@@ -996,9 +999,9 @@ h2 {
 }
 
 /* The welcome text is much longer than any wizard step — pin the dialog to the
-   same 440px the other steps use and let the text scroll inside instead. */
+   same height the other steps use and let the text scroll inside instead. */
 .modal-welcome {
-  height: 440px;
+  height: var(--setup-modal-height);
 }
 
 .welcome-form {

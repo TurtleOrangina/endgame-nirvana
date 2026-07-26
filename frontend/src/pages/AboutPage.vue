@@ -13,7 +13,7 @@ import AboutContent from '@/components/AboutContent.vue'
 <style scoped>
 .about-page {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--page-content-width, 720px);
 }
 
 .section {

@@ -182,7 +182,7 @@ function onCardClick(entry: EloHistoryEntry): void {
 <style scoped>
 .solve-progress-page {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--page-content-width, 720px);
   display: flex;
   flex-direction: column;
   gap: 2rem;

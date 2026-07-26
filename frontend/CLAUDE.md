@@ -82,10 +82,27 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
   sounds are still procedurally generated.
 - **canvas-confetti** for solve celebrations.
 
+## File layout
+
+- `src/pages/` — one component per entry in the header's navigation menu (plus the
+  legal pages): `TrainingPage`, `SolveProgressPage`, `BrowseExercisesPage`,
+  `SettingsPage`, `AboutPage`, `LegalPage`. A page is only ever rendered by `App.vue`.
+- `src/components/` — everything reusable or embedded: the board, the analysis panel,
+  the header, modals, and small shared widgets.
+
 ## Key files
 
-- `src/App.vue` — root component; orchestrates the exercise flow, scoreboard,
-  setup modal, and analysis panel, wiring the stores and composables together.
+- `src/App.vue` — root component; owns app-level routing (which page is shown, browser
+  back/forward, the Lichess OAuth return), theme/language/engine-thread preferences,
+  auth + sync startup, the header and the app-level modals. It holds no training state:
+  it drives `TrainingPage` through the small API that component exposes
+  (`loadCatalog`, `restoreSession`, `applyRoute`, `loadPuzzle`, `navigateHere`,
+  `headerTitle`, `headerVersusPieces`).
+- `src/pages/TrainingPage.vue` — the training/analysis view and everything behind it:
+  board, sidebar, puzzle status, analysis mode, category filter, the pagehide session
+  snapshot (`src/utils/trainingSessionState.ts`), and the `/train` ↔ `/analysis` URL
+  writes. Stays mounted (hidden via `v-show` on its `active` prop) while another page is
+  shown, so a puzzle in progress survives navigating away and back.
 - `src/components/ChessBoard.vue` — the heart of the app. Owns the Chessground
   board and a chess.js instance; handles player moves, promotions, premoves,
   move history / takeback, engine replies, tablebase-driven opponent moves, and
@@ -96,11 +113,14 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
   with a mode toggle for creating/signing into a Supabase account (only shown when a
   backend is configured) alongside the default local-only flow.
 - `src/components/PasswordRecoveryModal.vue` — shown on the `PASSWORD_RECOVERY` auth event.
-- `src/components/UserProfilePage.vue` — profile/account page: stats, Elo history, category
-  progress, difficulty preference, Lichess account linking, and account deletion entry point.
+- `src/pages/SolveProgressPage.vue` — Elo stats, category progress, and a replayable
+  history of recent attempts.
+- `src/pages/BrowseExercisesPage.vue` — searchable/filterable catalog of every puzzle.
+- `src/pages/SettingsPage.vue` — difficulty preference, theme/language, engine threads,
+  Lichess account linking, Endgame Nirvana account, and the account deletion entry point.
 - `src/components/DeleteAccountModal.vue` — confirmation modal for permanent account deletion
   (backed by the `delete_own_account` RPC, see `backend/CLAUDE.md`).
-- `src/components/LegalPage.vue` — static Impressum/Datenschutz content for the deployed site
+- `src/pages/LegalPage.vue` — static Impressum/Datenschutz content for the deployed site
   (`/impressum`, `/datenschutz`); real contact details, not a placeholder — see `useAppRouter.ts`.
 - `src/composables/useAppRouter.ts` — the hand-rolled client-side routing referenced in the
   root `CLAUDE.md`'s Deployment section (real paths, not hash routing).
@@ -153,7 +173,7 @@ The app is bilingual (English/German) via a hand-rolled composable — **no vue-
 - The language preference lives on `UserProfile.language` (persisted + synced like
   `themeMode`); browser detection (`src/utils/detectLocale.ts`) is only the first-run
   default. `App.vue` watches `profile.language` and calls `setLocale`.
-- **Exception**: `src/components/LegalPage.vue` (Impressum/Datenschutz) is intentionally
+- **Exception**: `src/pages/LegalPage.vue` (Impressum/Datenschutz) is intentionally
   hardcoded German-only — legal content required under Austrian law, not UI copy. Do
   not wire it to `t()`.
 

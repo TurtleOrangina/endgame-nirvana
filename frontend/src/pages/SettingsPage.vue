@@ -416,7 +416,7 @@ const deleteAccountLabel = computed(() =>
 <style scoped>
 .settings-page {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--page-content-width, 720px);
   display: flex;
   flex-direction: column;
   gap: 2rem;
