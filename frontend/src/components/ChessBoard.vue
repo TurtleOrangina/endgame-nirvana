@@ -92,7 +92,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'game-over': [result: GameResult]
-  'goal-evaluated': [isOutsideGoal: boolean]
+  'goal-evaluated': [isOutsideGoal: boolean, wasAlreadyOutsideGoal: boolean]
   'analysis-update': [lines: EngineLine[], tablebaseResult: TablebaseResult | null, fen: string]
 }>()
 
@@ -136,6 +136,23 @@ function recordGoalVerdict(fen: string, isOutsideGoal: boolean): void {
       return
     }
   }
+}
+
+// The verdict `fen` inherits from the positions leading up to it, i.e. whether the player
+// was already off course before the move that reached it. Takebacks and history navigation
+// mean an evaluation can happen on a fresh branch that starts from an on-track position,
+// so this — not the previous evaluation — decides whether a wrong move is a *new* mistake.
+function goalVerdictBefore(fen: string): boolean {
+  const entries = historyEntries.value
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i]?.fen !== fen) continue
+    for (let j = i - 1; j >= 0; j--) {
+      const verdict = entries[j]?.isOutsideGoal
+      if (verdict !== undefined) return verdict
+    }
+    break
+  }
+  return false
 }
 
 // Whether the currently displayed position counts as off-course, so the "Wrong solution"
@@ -925,6 +942,9 @@ async function checkExerciseFailure(
 ): Promise<void> {
   const exercise = useExercisesStore().currentExercise
   if (!exercise) return
+  // Captured before the recheck below awaits — the history it reads can be truncated by
+  // a takeback in the meantime.
+  const wasAlreadyOutsideGoal = goalVerdictBefore(fen)
   const tablebaseCategory = selection.tbData?.category ?? null
   let isOutsideGoal = isOutsidePuzzleGoal(
     exercise.expectedResult,
@@ -955,7 +975,7 @@ async function checkExerciseFailure(
   }
 
   recordGoalVerdict(fen, isOutsideGoal)
-  emit('goal-evaluated', isOutsideGoal)
+  emit('goal-evaluated', isOutsideGoal, wasAlreadyOutsideGoal)
 }
 
 async function applyEngineReply(bestmove: string): Promise<void> {

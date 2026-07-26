@@ -100,7 +100,6 @@ const currentRouteUrl = computed(() =>
 )
 
 const puzzleStatus = ref<PuzzleStatus>(PuzzleStatus.SOLVING)
-const isWrongSolution = ref(false)
 const isWrongSolutionFlashVisible = ref(false)
 let wrongSolutionFlashTimeout: ReturnType<typeof setTimeout> | undefined
 
@@ -169,7 +168,6 @@ watch(
     if (!exercise || !id) return
     const recent = getRecentAttemptStatus(exercise.id)
     puzzleStatus.value = recent ?? PuzzleStatus.SOLVING
-    isWrongSolution.value = false
     isAnalysisMode.value = false
     clearAnalysisResults()
     if (!suppressUrlUpdate) {
@@ -225,11 +223,6 @@ async function restoreSavedTrainingState(requestedFen: string | null = null): Pr
 
   store.selectByIdWithTransform(snapshot.exerciseId, snapshot.transformCode)
   puzzleStatus.value = snapshot.puzzleStatus
-  isWrongSolution.value =
-    snapshot.board.entries
-      .slice(0, snapshot.board.index + 1)
-      .reverse()
-      .find((entry) => entry.isOutsideGoal !== undefined)?.isOutsideGoal ?? false
 
   await nextTick()
   const board = boardRef.value
@@ -407,7 +400,6 @@ function onGameOver(result: GameResult): void {
       confetti({ particleCount: 120, spread: 70, origin })
     } else {
       puzzleStatus.value = PuzzleStatus.FAILED
-      isWrongSolution.value = true
       flashWrongSolutionOnBoard()
       if (!isRetry) {
         store.recordFailed()
@@ -423,15 +415,15 @@ function onGameOver(result: GameResult): void {
   }
 }
 
-// isWrongSolution mirrors the latest engine/tablebase verdict for the live position and exists
-// to detect the moment the player goes off course (failure sound + board flash). It is
-// independent of PuzzleStatus (which tracks the once-per-attempt rated outcome and never
-// reverts once FAILED); the sidebar "Wrong solution" text is instead derived from the verdict
-// stored on the displayed history entry (ChessBoard's displayedIsOutsideGoal).
-function onGoalEvaluated(isOutsideGoal: boolean): void {
-  const justWentOffCourse = isOutsideGoal && !isWrongSolution.value
-  isWrongSolution.value = isOutsideGoal
-  if (justWentOffCourse) {
+// Announces the moment the player goes off course (failure sound + board flash). Whether
+// this is a *new* mistake comes from the board, which compares the verdict against the
+// position the move was made from — so a wrong move played on a fresh branch after a
+// takeback announces itself again, while continuing an already-lost line stays quiet.
+// This is independent of PuzzleStatus (which tracks the once-per-attempt rated outcome and
+// never reverts once FAILED); the sidebar "Wrong solution" text is instead derived from the
+// verdict stored on the displayed history entry (ChessBoard's displayedIsOutsideGoal).
+function onGoalEvaluated(isOutsideGoal: boolean, wasAlreadyOutsideGoal: boolean): void {
+  if (isOutsideGoal && !wasAlreadyOutsideGoal) {
     audio.playFailureSound()
     flashWrongSolutionOnBoard()
   }
@@ -441,34 +433,24 @@ function onGoalEvaluated(isOutsideGoal: boolean): void {
   }
 }
 
-function resetPuzzle(): void {
+// Deliberately keeps the current orientation: re-rolling colours and mirroring is
+// disorienting when the player is trying the *same* position again. A fresh random
+// transform is only rolled when a puzzle is newly opened (see the exercises store).
+function onRetry(): void {
   puzzleStatus.value = PuzzleStatus.FAILED
-  isWrongSolution.value = false
   hideWrongSolutionFlash()
   clearAnalysisResults()
   boardRef.value?.resetBoard()
 }
 
-// Re-rolls a fresh random orientation for the same exercise before resetting the
-// board — `resetBoard()` re-reads `props.fen` at call time, and `nextTick()` here
-// ensures that prop has already picked up the new transform before it's called.
-async function onRetry(): Promise<void> {
-  const exercise = currentExercise.value
-  if (exercise) store.selectById(exercise.id)
-  await nextTick()
-  resetPuzzle()
-}
-
 function onNext(): void {
   history.pushState(null, '', window.location.href)
-  isWrongSolution.value = false
   hideWrongSolutionFlash()
   store.advanceToNext()
 }
 
 function onSurrender(): void {
   puzzleStatus.value = PuzzleStatus.FAILED
-  isWrongSolution.value = false
   store.recordFailed()
   audio.playFailureSound()
 }
@@ -525,7 +507,6 @@ function onLeaveAnalysis(): void {
   isAnalysisMode.value = false
   analysisPaused.value = false
   puzzleStatus.value = PuzzleStatus.FAILED
-  isWrongSolution.value = false
   clearAnalysisResults()
   boardRef.value?.leaveAnalysisMode()
   history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
