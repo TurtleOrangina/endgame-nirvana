@@ -13,7 +13,7 @@ import { useBoardAudio, type BoardSound } from '@/composables/useBoardAudio'
 import { useLichessTablebase } from '@/composables/useLichessTablebase'
 import { useLocale } from '@/composables/useLocale'
 import { useMoveSelector, type MoveSelectionResult } from '@/composables/useMoveSelector'
-import { isOutsidePuzzleGoal } from '@/utils/puzzleEvaluation'
+import { evaluatePuzzleGoal } from '@/utils/puzzleEvaluation'
 import {
   hasPawnsOnBoard,
   isBareKingVsMajorPiece,
@@ -393,7 +393,7 @@ function shouldAutoSolve(
 ): boolean {
   const userElo = useUserProfileStore().profile?.endgameElo ?? 0
   if (userElo <= MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON) return false
-  if (isOutsidePuzzleGoal('win', scoreCP, scoreMate, tablebaseCategory)) return false
+  if (evaluatePuzzleGoal('win', scoreCP, scoreMate, tablebaseCategory).isOutsideGoal) return false
   const initialFen = historyEntries.value[0]?.fen
   if (initialFen && isBareKingVsMajorPiece(initialFen, playerColor)) return false
   return isBareKingVsMajorPiece(fen, playerColor)
@@ -945,13 +945,13 @@ async function checkExerciseFailure(
   // Captured before the recheck below awaits — the history it reads can be truncated by
   // a takeback in the meantime.
   const wasAlreadyOutsideGoal = goalVerdictBefore(fen)
-  const tablebaseCategory = selection.tbData?.category ?? null
-  let isOutsideGoal = isOutsidePuzzleGoal(
+  const { isOutsideGoal: initialVerdict, isTablebaseVerdict } = evaluatePuzzleGoal(
     exercise.expectedResult,
     selection.scoreCP,
     selection.scoreMate,
-    tablebaseCategory,
+    selection.tbData?.category ?? null,
   )
+  let isOutsideGoal = initialVerdict
 
   // The engine's first search only gets ~400ms and can misjudge a position as won/lost
   // when it's actually a known draw (e.g. wrong-coloured bishop with a rook pawn) simply
@@ -959,19 +959,18 @@ async function checkExerciseFailure(
   // the puzzle even though the player did nothing wrong, so when the verdict came from
   // the engine score rather than an authoritative tablebase category, re-run a short
   // single-line search and only confirm the failure if it agrees.
-  const isTablebaseVerdict = tablebaseCategory !== null && tablebaseCategory !== 'unknown'
   if (isOutsideGoal && !isTablebaseVerdict) {
     const recheckLines = await engine
       .getBestMoves(fen, [], FAILURE_RECHECK_THINKING_TIME_MS, 1)
       .catch((): EngineLine[] => [])
     if (moveGeneration !== gen) return
     const recheckLine = recheckLines[0]
-    isOutsideGoal = isOutsidePuzzleGoal(
+    isOutsideGoal = evaluatePuzzleGoal(
       exercise.expectedResult,
       recheckLine?.scoreCP ?? null,
       recheckLine?.scoreMate ?? null,
       null,
-    )
+    ).isOutsideGoal
   }
 
   recordGoalVerdict(fen, isOutsideGoal)

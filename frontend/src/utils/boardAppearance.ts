@@ -8,38 +8,34 @@
 // preloadAssets.ts so they are cached before the user goes offline.
 
 export type BoardThemeId =
-  | 'brown'
   | 'wood4'
-  | 'maple'
-  | 'horsey'
-  | 'blue'
-  | 'blue2'
   | 'blue3'
   | 'green'
+  | 'metal'
+  | 'purple-diag'
+  | 'newspaper'
+  | 'maple'
+  | 'blue'
   | 'olive'
   | 'marble'
   | 'grey'
-  | 'metal'
-  | 'newspaper'
   | 'purple'
-  | 'purple-diag'
+  | 'blue2'
+  | 'brown'
 
 export type PieceSetId =
-  | 'cburnett'
-  | 'merida'
-  | 'kosal'
-  | 'caliente'
-  | 'rhosgfx'
   | 'maestro'
-  | 'fresca'
-  | 'cardinal'
-  | 'gioco'
   | 'staunty'
+  | 'cburnett'
+  | 'cardinal'
+  | 'merida'
   | 'monarchy'
+  | 'fresca'
+  | 'gioco'
   | 'dubrovny'
+  | 'kosal'
   | 'mpchess'
-  | 'horsey'
-  | 'anarcandy'
+  | 'caliente'
 
 export const DEFAULT_BOARD_THEME: BoardThemeId = 'wood4'
 export const DEFAULT_PIECE_SET: PieceSetId = 'maestro'
@@ -47,6 +43,9 @@ export const DEFAULT_PIECE_SET: PieceSetId = 'maestro'
 interface BoardTheme {
   // File extension of /board/<id>.<extension>
   extension: 'webp' | 'svg'
+  // Only where lichess's own id makes a poor label ('wood4', three unqualified blues);
+  // everything else is derived from the id by appearanceDisplayName below.
+  displayName?: string
   // Coordinate label colours, picked for contrast against the square they sit on —
   // taken from lichess's own per-theme values (ui/lib/css/theme/board/_boards.scss,
   // where they are named the other way round: their "white" colour is the light-square
@@ -56,49 +55,66 @@ interface BoardTheme {
 }
 
 const BOARD_THEMES: Record<BoardThemeId, BoardTheme> = {
-  brown: { extension: 'webp', coordOnLightSquare: '#946f51', coordOnDarkSquare: '#f0d9b5' },
-  wood4: { extension: 'webp', coordOnLightSquare: '#7b5330', coordOnDarkSquare: '#caaf7d' },
-  maple: { extension: 'webp', coordOnLightSquare: '#bc7944', coordOnDarkSquare: '#e8ceab' },
-  horsey: { extension: 'webp', coordOnLightSquare: '#946f51', coordOnDarkSquare: '#f0d9b5' },
-  blue: { extension: 'webp', coordOnLightSquare: '#788a94', coordOnDarkSquare: '#dee3e6' },
-  blue2: { extension: 'webp', coordOnLightSquare: '#546f82', coordOnDarkSquare: '#97b2c7' },
-  blue3: { extension: 'webp', coordOnLightSquare: '#315991', coordOnDarkSquare: '#d9e0e6' },
+  wood4: {
+    extension: 'webp',
+    displayName: 'Wood',
+    coordOnLightSquare: '#7b5330',
+    coordOnDarkSquare: '#caaf7d',
+  },
+  blue3: {
+    extension: 'webp',
+    displayName: 'Strong Blue',
+    coordOnLightSquare: '#315991',
+    coordOnDarkSquare: '#d9e0e6',
+  },
   green: { extension: 'webp', coordOnLightSquare: '#6d8753', coordOnDarkSquare: '#ffffdd' },
-  olive: { extension: 'webp', coordOnLightSquare: '#6d6655', coordOnDarkSquare: '#b8b19f' },
-  marble: { extension: 'webp', coordOnLightSquare: '#4f644e', coordOnDarkSquare: '#93ab91' },
-  grey: { extension: 'webp', coordOnLightSquare: '#7d7d7d', coordOnDarkSquare: '#b8b8b8' },
   metal: { extension: 'webp', coordOnLightSquare: '#727272', coordOnDarkSquare: '#c9c9c9' },
-  newspaper: { extension: 'svg', coordOnLightSquare: '#8d8d8d', coordOnDarkSquare: '#ffffff' },
-  purple: { extension: 'webp', coordOnLightSquare: '#7d4a8d', coordOnDarkSquare: '#9f90b0' },
   'purple-diag': {
     extension: 'webp',
+    displayName: 'Light Purple',
     coordOnLightSquare: '#957ab0',
     coordOnDarkSquare: '#e5daf0',
   },
+  newspaper: { extension: 'svg', coordOnLightSquare: '#8d8d8d', coordOnDarkSquare: '#ffffff' },
+  maple: { extension: 'webp', coordOnLightSquare: '#bc7944', coordOnDarkSquare: '#e8ceab' },
+  blue: {
+    extension: 'webp',
+    displayName: 'Light Blue',
+    coordOnLightSquare: '#788a94',
+    coordOnDarkSquare: '#dee3e6',
+  },
+  olive: { extension: 'webp', coordOnLightSquare: '#6d6655', coordOnDarkSquare: '#b8b19f' },
+  marble: { extension: 'webp', coordOnLightSquare: '#4f644e', coordOnDarkSquare: '#93ab91' },
+  grey: { extension: 'webp', coordOnLightSquare: '#7d7d7d', coordOnDarkSquare: '#b8b8b8' },
+  purple: { extension: 'webp', coordOnLightSquare: '#7d4a8d', coordOnDarkSquare: '#9f90b0' },
+  blue2: {
+    extension: 'webp',
+    displayName: 'Muted Blue',
+    coordOnLightSquare: '#546f82',
+    coordOnDarkSquare: '#97b2c7',
+  },
+  brown: { extension: 'webp', coordOnLightSquare: '#946f51', coordOnDarkSquare: '#f0d9b5' },
 }
 
 // File extension of /piece/<id>/<code>.<extension> — every set is SVG except monarchy.
 const PIECE_SETS: Record<PieceSetId, 'svg' | 'webp'> = {
-  cburnett: 'svg',
-  merida: 'svg',
-  kosal: 'svg',
-  caliente: 'svg',
-  rhosgfx: 'svg',
   maestro: 'svg',
-  fresca: 'svg',
-  cardinal: 'svg',
-  gioco: 'svg',
   staunty: 'svg',
+  cburnett: 'svg',
+  cardinal: 'svg',
+  merida: 'svg',
   monarchy: 'webp',
+  fresca: 'svg',
+  gioco: 'svg',
   dubrovny: 'svg',
+  kosal: 'svg',
   mpchess: 'svg',
-  horsey: 'svg',
-  anarcandy: 'svg',
+  caliente: 'svg',
 }
 
-// Display order for the settings pickers: board themes grouped by hue family (wood,
-// blue, green, grey, purple) so the picker reads as a colour spectrum; piece sets in
-// lichess's own order.
+// Display order for the pickers, best first — a hand-picked subset and ordering of
+// lichess's sets, not their catalogue order. Removing an id is safe: a profile that
+// still names one (or a future build's) falls back to the default via the guards below.
 export const BOARD_THEME_IDS = Object.keys(BOARD_THEMES) as BoardThemeId[]
 export const PIECE_SET_IDS = Object.keys(PIECE_SETS) as PieceSetId[]
 
@@ -140,6 +156,19 @@ export function boardThemeOrDefault(id: string | undefined): BoardThemeId {
 
 export function pieceSetOrDefault(id: string | undefined): PieceSetId {
   return isPieceSetId(id) ? id : DEFAULT_PIECE_SET
+}
+
+// Piece sets keep the names their authors gave them (they are proper names, like a
+// username), and so do most boards, so this deliberately doesn't go through t(): the
+// only cosmetic step is formatting the id ('mpchess' → 'Mpchess'). Boards whose lichess
+// id is a poor label carry an explicit displayName instead.
+export function appearanceDisplayName(id: BoardThemeId | PieceSetId): string {
+  if (isBoardThemeId(id)) {
+    const { displayName } = BOARD_THEMES[id]
+    if (displayName) return displayName
+  }
+  const spaced = id.replaceAll('-', ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
 export function boardImageUrl(id: BoardThemeId): string {

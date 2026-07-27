@@ -9,15 +9,7 @@ import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
 import { isValidEmail } from '@/utils/email'
 import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
-import {
-  BOARD_THEME_IDS,
-  PIECE_SET_IDS,
-  boardImageUrl,
-  boardThemeOrDefault,
-  pieceImageUrl,
-  type BoardThemeId,
-  type PieceSetId,
-} from '@/utils/boardAppearance'
+import AppearanceSwatchGrid from '@/components/AppearanceSwatchGrid.vue'
 import type { DifficultyPreference, Language, ThemeMode } from '@/types'
 
 const userProfileStore = useUserProfileStore()
@@ -28,24 +20,6 @@ const authStore = useAuthStore()
 const syncStore = useSyncStore()
 const lichessAuth = useLichessAuth()
 const { t } = useLocale()
-
-// Board themes and piece sets keep the names their authors gave them (they are proper
-// names, like a username), so these deliberately don't go through t() — only the
-// id's formatting is cosmetic: 'purple-diag' → 'Purple diag'.
-function appearanceName(id: BoardThemeId | PieceSetId): string {
-  const spaced = id.replaceAll('-', ' ')
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
-
-function boardImageCss(id: BoardThemeId): string {
-  return `url('${boardImageUrl(id)}')`
-}
-
-// Piece previews sit on the board the user has actually chosen, so the pair is judged
-// the way it will look in play rather than against a neutral backdrop.
-const selectedBoardImageCss = computed(() =>
-  boardImageCss(boardThemeOrDefault(profile.value?.boardTheme)),
-)
 
 const accountEmail = ref('')
 const accountPassword = ref('')
@@ -353,43 +327,12 @@ const deleteAccountLabel = computed(() =>
 
       <div v-if="profile" class="ident-row ident-row-top">
         <span class="ident-label">{{ t((s) => s.profile.appearance.boardTitle) }}</span>
-        <div class="swatch-grid">
-          <button
-            v-for="id in BOARD_THEME_IDS"
-            :key="id"
-            type="button"
-            class="swatch"
-            :class="{ selected: profile.boardTheme === id }"
-            :aria-pressed="profile.boardTheme === id"
-            :title="appearanceName(id)"
-            @click="userProfileStore.setBoardTheme(id)"
-          >
-            <span class="swatch-preview" :style="{ backgroundImage: boardImageCss(id) }" />
-            <span class="swatch-name">{{ appearanceName(id) }}</span>
-          </button>
-        </div>
+        <AppearanceSwatchGrid kind="board" class="ident-swatches" />
       </div>
 
       <div v-if="profile" class="ident-row ident-row-top">
         <span class="ident-label">{{ t((s) => s.profile.appearance.pieceSetTitle) }}</span>
-        <div class="swatch-grid">
-          <button
-            v-for="id in PIECE_SET_IDS"
-            :key="id"
-            type="button"
-            class="swatch"
-            :class="{ selected: profile.pieceSet === id }"
-            :aria-pressed="profile.pieceSet === id"
-            :title="appearanceName(id)"
-            @click="userProfileStore.setPieceSet(id)"
-          >
-            <span class="swatch-preview" :style="{ backgroundImage: selectedBoardImageCss }">
-              <img class="swatch-piece" :src="pieceImageUrl(id, 'wK')" alt="" />
-              <img class="swatch-piece" :src="pieceImageUrl(id, 'bQ')" alt="" />
-            </span>
-            <span class="swatch-name">{{ appearanceName(id) }}</span>
-          </button>
-        </div>
+        <AppearanceSwatchGrid kind="pieces" class="ident-swatches" />
       </div>
     </section>
 
@@ -609,67 +552,9 @@ const deleteAccountLabel = computed(() =>
 }
 
 /* Board / piece-set pickers */
-.swatch-grid {
+.ident-swatches {
   flex: 1;
   min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-  gap: 0.5rem;
-}
-
-.swatch {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  background: none;
-  border: 2px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--muted);
-  transition:
-    border-color 0.12s,
-    color 0.12s;
-}
-
-.swatch:hover {
-  border-color: var(--border);
-  color: var(--fg);
-}
-
-.swatch.selected {
-  border-color: var(--accent, #dca200);
-  color: var(--fg);
-}
-
-/* The board images are whole 8×8 boards, so a 400% background shows exactly the
-   top-left 2×2 squares — enough to read both square colours and the texture. */
-.swatch-preview {
-  position: relative;
-  display: flex;
-  aspect-ratio: 1;
-  border-radius: 4px;
-  overflow: hidden;
-  background-size: 400% 400%;
-  background-position: top left;
-}
-
-/* One piece per square of the preview's top row, so each is seen against a
-   light and a dark square. */
-.swatch-piece {
-  width: 50%;
-  height: 50%;
-  object-fit: contain;
-}
-
-.swatch-name {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .btn-success-outline {

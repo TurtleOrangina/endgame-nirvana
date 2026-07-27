@@ -1,6 +1,16 @@
 <script setup lang="ts">
 defineProps<{
-  icon: 'dumbbell' | 'trending-up' | 'file-search' | 'settings' | 'info'
+  icon:
+    | 'dumbbell'
+    | 'trending-up'
+    | 'file-search'
+    | 'settings'
+    | 'info'
+    | 'grid'
+    | 'crown'
+    | 'chevron-down'
+    | 'chevron-left'
+    | 'chevron-right'
 }>()
 </script>
 
@@ -79,5 +89,72 @@ defineProps<{
     <circle cx="12" cy="12" r="10" />
     <path d="M12 16v-4" />
     <path d="M12 8h.01" />
+  </svg>
+  <svg
+    v-else-if="icon === 'grid'"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 9h18" />
+    <path d="M3 15h18" />
+    <path d="M9 3v18" />
+    <path d="M15 3v18" />
+  </svg>
+  <svg
+    v-else-if="icon === 'crown'"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path
+      d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"
+    />
+    <path d="M5 21h14" />
+  </svg>
+  <svg
+    v-else-if="icon === 'chevron-down'"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+  <svg
+    v-else-if="icon === 'chevron-left'"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="m15 18-6-6 6-6" />
+  </svg>
+  <svg
+    v-else-if="icon === 'chevron-right'"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="m9 18 6-6-6-6" />
   </svg>
 </template>

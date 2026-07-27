@@ -145,8 +145,8 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
 - `src/lib/supabaseClient.ts` — the shared Supabase client, `null` when unconfigured.
 - `src/utils/chess.ts` — SAN/figurine and UCI-line formatting helpers.
 - `src/utils/exerciseId.ts` — normalized-FEN exercise ids + the legacy `path::fen` migration.
-- `src/utils/boardAppearance.ts` — the board-theme and piece-set catalog (15 boards,
-  15 piece sets, all adopted from lichess — see
+- `src/utils/boardAppearance.ts` — the board-theme and piece-set catalog (14 boards,
+  12 piece sets, a hand-picked selection adopted from lichess and ordered best-first — see
   `public/board/ATTRIBUTION.md` and `public/piece/ATTRIBUTION.md`, and note two of
   lichess's featured piece sets are deliberately excluded as non-redistributable).
   Assets live at fixed paths under `public/board/` and `public/piece/<set>/`, so a

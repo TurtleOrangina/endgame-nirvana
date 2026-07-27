@@ -4,6 +4,7 @@ import { useLocale } from '@/composables/useLocale'
 import type { AppView } from '@/composables/useAppRouter'
 import type { PieceName } from '@/utils/chess'
 import NavIcon from '@/components/NavIcon.vue'
+import AppearanceSwatchGrid from '@/components/AppearanceSwatchGrid.vue'
 
 type NavView = Exclude<AppView, 'analysis'>
 type SidePieces = { color: 'white' | 'black'; pieces: PieceName[] }
@@ -43,6 +44,31 @@ const activeIcon = computed<NavIconName>(
 function onNavigate(view: NavView): void {
   if (dropdownRef.value) dropdownRef.value.open = false
   if (view !== props.activeView) emit('navigate', view)
+}
+
+// Board and piece set are picked from inside the menu rather than only on the settings
+// page, so the board stays visible behind it and every choice is judged on the real
+// thing. Picking one deliberately leaves the menu open for exactly that reason.
+type MenuPanel = 'main' | 'board' | 'pieces'
+const menuPanel = ref<MenuPanel>('main')
+
+// The swatch grid is only ever rendered in the non-'main' branch of the template, but
+// Vue's compiler can't narrow menuPanel across that v-if/v-else, so this does it for
+// the :kind prop.
+const appearancePanel = computed((): 'board' | 'pieces' =>
+  menuPanel.value === 'board' ? 'board' : 'pieces',
+)
+
+const appearancePanelTitle = computed(() =>
+  appearancePanel.value === 'board'
+    ? t((s) => s.profile.appearance.boardTitle)
+    : t((s) => s.profile.appearance.pieceSetTitle),
+)
+
+// Reopening the menu always starts at the top level, so it never comes back in a
+// submenu the user left behind minutes ago.
+function onMenuToggle(): void {
+  if (!dropdownRef.value?.open) menuPanel.value = 'main'
 }
 
 const versusSides = computed<SidePieces[]>(() =>
@@ -115,9 +141,8 @@ watch(
       </span>
     </div>
 
-    <details v-if="username" ref="dropdownRef" class="dropdown">
+    <details v-if="username" ref="dropdownRef" class="dropdown" @toggle="onMenuToggle">
       <summary class="btn-profile-nav">
-        {{ username }}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
@@ -131,18 +156,47 @@ watch(
           <circle cx="12" cy="10" r="3" />
           <path d="M6.168 18.849A4 4 0 0 1 10 16h4a4 4 0 0 1 3.834 2.855" />
         </svg>
+        {{ username }}
+        <NavIcon icon="chevron-down" class="menu-chevron" />
       </summary>
-      <div class="dropdown-panel">
-        <div
-          v-for="item in navItems"
-          :key="item.view"
-          class="option"
-          :class="{ selected: activeView === item.view }"
-          @click="onNavigate(item.view)"
-        >
-          <NavIcon :icon="item.icon" class="option-icon" />
-          <span class="option-label">{{ item.label() }}</span>
-        </div>
+
+      <div class="dropdown-panel" :class="{ 'appearance-panel': menuPanel !== 'main' }">
+        <template v-if="menuPanel === 'main'">
+          <div
+            v-for="item in navItems"
+            :key="item.view"
+            class="option"
+            :class="{ selected: activeView === item.view }"
+            @click="onNavigate(item.view)"
+          >
+            <NavIcon :icon="item.icon" class="option-icon" />
+            <span class="option-label">{{ item.label() }}</span>
+          </div>
+
+          <div class="panel-divider" />
+
+          <div class="option" @click="menuPanel = 'board'">
+            <NavIcon icon="grid" class="option-icon" />
+            <span class="option-label">{{ t((s) => s.profile.appearance.boardTitle) }}</span>
+            <NavIcon icon="chevron-right" class="option-icon submenu-arrow" />
+          </div>
+          <div class="option" @click="menuPanel = 'pieces'">
+            <NavIcon icon="crown" class="option-icon" />
+            <span class="option-label">{{ t((s) => s.profile.appearance.pieceSetTitle) }}</span>
+            <NavIcon icon="chevron-right" class="option-icon submenu-arrow" />
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="option submenu-back" @click="menuPanel = 'main'">
+            <NavIcon icon="chevron-left" class="option-icon" />
+            <span class="option-label">{{ appearancePanelTitle }}</span>
+          </div>
+
+          <div class="panel-divider" />
+
+          <AppearanceSwatchGrid :kind="appearancePanel" class="submenu-swatches" />
+        </template>
       </div>
     </details>
   </div>
@@ -279,6 +333,21 @@ watch(
   flex-shrink: 0;
 }
 
+/* The affordance that the button opens a menu at all — several users didn't realise
+   it was clickable without it. */
+.menu-chevron {
+  width: 14px;
+  height: 14px;
+  margin-left: -0.1rem;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.dropdown[open] .menu-chevron {
+  transform: rotate(180deg);
+  color: inherit;
+}
+
 .btn-profile-nav:hover {
   background: var(--hover-bg);
 }
@@ -296,6 +365,12 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+}
+
+/* Wide enough for four swatches a row, but never wider than the viewport it is
+   pinned to the right edge of. */
+.appearance-panel {
+  width: min(268px, calc(100vw - 2rem));
 }
 
 .option {
@@ -333,5 +408,29 @@ watch(
 
 .option.selected .option-icon {
   color: var(--accent);
+}
+
+.panel-divider {
+  height: 1px;
+  margin: 0.3rem 0.2rem;
+  background: var(--border);
+}
+
+.submenu-arrow {
+  margin-right: -0.2rem;
+}
+
+.submenu-back .option-label {
+  font-weight: 600;
+}
+
+/* Every theme at once is taller than a phone screen: the grid scrolls inside the panel
+   instead of running off the bottom of the viewport. */
+.submenu-swatches {
+  --swatch-min-width: 58px;
+
+  max-height: min(60vh, 400px);
+  overflow-y: auto;
+  padding: 0.1rem;
 }
 </style>
