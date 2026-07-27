@@ -50,6 +50,13 @@ export interface CategoryOption {
   total: number
 }
 
+// Why the selected category currently has no puzzle to offer:
+// - `allCompleted`: every puzzle in it has been attempted within the recent-attempt window,
+//   whatever the difficulty preference (see recentAttemptStatusById).
+// - `restHiddenByDifficulty`: uncompleted ones remain, but the difficulty preference hides them.
+// - `noExercises`: the category holds no puzzles at all.
+export type CategoryEmptyReason = 'allCompleted' | 'restHiddenByDifficulty' | 'noExercises'
+
 // `hidden` counts puzzles excluded by the difficulty filter; they are not part of `total`.
 export interface SolveProgress {
   solved: number
@@ -471,22 +478,6 @@ export const useExercisesStore = defineStore('exercises', () => {
     filterByCategory(allExercises.value, selectedCategory.value),
   )
 
-  // Puzzles hidden from the selected category by the difficulty filter, split by whether
-  // they're too hard or too easy relative to the user's current elo.
-  const categoryHiddenCounts = computed((): { tooHard: number; tooEasy: number } => {
-    const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
-    const eligibleIds = difficultyEligibleIds.value
-
-    let tooHard = 0
-    let tooEasy = 0
-    for (const ex of categoryExercisesAllDifficulties.value) {
-      if (eligibleIds.has(ex.id)) continue
-      if (eloOf(ex) > userElo) tooHard++
-      else if (eloOf(ex) < userElo) tooEasy++
-    }
-    return { tooHard, tooEasy }
-  })
-
   // Active (eligible) puzzle count for the entire pool, plus how many are hidden by the
   // difficulty filter, split by whether they're too hard or too easy relative to the user's
   // current elo. Used by the difficulty preference settings, which aren't scoped to a category.
@@ -506,23 +497,75 @@ export const useExercisesStore = defineStore('exercises', () => {
     },
   )
 
-  // Exercises within the selected category that are eligible to be picked next: attempted
-  // (solved or failed) more than RECENT_ATTEMPT_EXCLUSION_MS ago, or never attempted at all.
-  const recentlyAttemptedIds = computed((): Set<string> => {
+  // The outcome of each exercise's most recent attempt within the recent-attempt window — the
+  // "last 8 weeks" of puzzle history the app works with everywhere. An exercise in here counts
+  // as *completed*: it stays out of the selection pool until its attempt ages out of the
+  // window, after which the puzzle comes around again and is uncompleted once more.
+  const recentAttemptStatusById = computed((): Map<string, 'solved' | 'failed'> => {
     const history = useUserProfileStore().profile?.eloHistory ?? []
     const cutoff = Date.now() - RECENT_ATTEMPT_EXCLUSION_MS
-    const ids = new Set<string>()
+    const statuses = new Map<string, 'solved' | 'failed'>()
     for (const entry of history) {
       if (!entry.exerciseId) continue
-      if (new Date(entry.timestamp).getTime() >= cutoff) ids.add(entry.exerciseId)
+      if (new Date(entry.timestamp).getTime() < cutoff) continue
+      statuses.set(entry.exerciseId, entry.solved ? 'solved' : 'failed')
     }
-    return ids
+    return statuses
+  })
+
+  const completedExerciseIds = computed(
+    (): Set<string> => new Set(recentAttemptStatusById.value.keys()),
+  )
+
+  // Puzzles hidden from the selected category by the difficulty filter that the user has not
+  // completed, split by whether they're too hard or too easy relative to the user's current
+  // elo — i.e. exactly the puzzles that widening the difficulty preference would put back on
+  // the board. Already-completed ones are left out: unlocking them would offer nothing new,
+  // since they stay out of the pool until their attempt ages out anyway.
+  const categoryHiddenUncompletedCounts = computed((): { tooHard: number; tooEasy: number } => {
+    const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
+    const eligibleIds = difficultyEligibleIds.value
+
+    let tooHard = 0
+    let tooEasy = 0
+    for (const ex of categoryExercisesAllDifficulties.value) {
+      if (eligibleIds.has(ex.id) || completedExerciseIds.value.has(ex.id)) continue
+      if (eloOf(ex) < userElo) tooEasy++
+      else tooHard++
+    }
+    return { tooHard, tooEasy }
+  })
+
+  // Why there is no puzzle left to put on the board in the selected category. Only meaningful
+  // while currentExercise is null — the training view picks which "nothing to solve" message
+  // to show from it. Deliberately judged against the whole category (every difficulty), so
+  // completing it always reads as a celebration rather than as an empty filter.
+  const categoryEmptyReason = computed((): CategoryEmptyReason => {
+    if (categoryExercisesAllDifficulties.value.length === 0) return 'noExercises'
+    const hidden = categoryHiddenUncompletedCounts.value
+    if (hidden.tooHard > 0 || hidden.tooEasy > 0) return 'restHiddenByDifficulty'
+    return 'allCompleted'
+  })
+
+  // How many of the selected category's completed puzzles were solved rather than failed, as a
+  // percentage — shown with the "category completed" celebration. Null while nothing in the
+  // category has been completed.
+  const categorySolveRatePercent = computed((): number | null => {
+    let completed = 0
+    let solved = 0
+    for (const ex of categoryExercisesAllDifficulties.value) {
+      const status = recentAttemptStatusById.value.get(ex.id)
+      if (!status) continue
+      completed++
+      if (status === 'solved') solved++
+    }
+    return completed === 0 ? null : Math.round((solved / completed) * 100)
   })
 
   const filteredExercises = computed((): Exercise[] => {
     const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
 
-    const pool = categoryExercises.value.filter((ex) => !recentlyAttemptedIds.value.has(ex.id))
+    const pool = categoryExercises.value.filter((ex) => !completedExerciseIds.value.has(ex.id))
 
     return pool
       .map((ex) => ({ ex, dist: Math.abs(parseInt(ex.difficulty) - userElo) }))
@@ -737,20 +780,10 @@ export const useExercisesStore = defineStore('exercises', () => {
     return false
   }
 
-  // The exercise's most recent attempt outcome within the same recent-attempt window as
-  // hasSolvedRecently/recentlyAttemptedIds — the "last 8 weeks" of puzzle history shown
-  // elsewhere in the app (e.g. Puzzle History). Used by Browse Exercises to mark puzzles
-  // as solved/failed.
+  // The exercise's most recent attempt outcome within the recent-attempt window (see
+  // recentAttemptStatusById). Used by Browse Exercises to mark puzzles as solved/failed.
   function recentAttemptStatus(exerciseId: string): 'solved' | 'failed' | null {
-    const history = useUserProfileStore().profile?.eloHistory ?? []
-    const cutoff = Date.now() - RECENT_ATTEMPT_EXCLUSION_MS
-    for (let i = history.length - 1; i >= 0; i--) {
-      const entry = history[i]
-      if (!entry) break
-      if (new Date(entry.timestamp).getTime() < cutoff) break
-      if (entry.exerciseId === exerciseId) return entry.solved ? 'solved' : 'failed'
-    }
-    return null
+    return recentAttemptStatusById.value.get(exerciseId) ?? null
   }
 
   function exerciseById(id: string): Exercise | undefined {
@@ -872,7 +905,9 @@ export const useExercisesStore = defineStore('exercises', () => {
     categoryPuzzleSolved,
     categoryPuzzleFailed,
     categoryPuzzleUnattempted,
-    categoryHiddenCounts,
+    categoryHiddenUncompletedCounts,
+    categoryEmptyReason,
+    categorySolveRatePercent,
     difficultyPuzzleCounts,
     categoryProgressTree,
     overallProgress,

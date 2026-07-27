@@ -21,6 +21,7 @@ import BoardNavControls from '@/components/BoardNavControls.vue'
 import CategorySolveCount from '@/components/CategorySolveCount.vue'
 import {
   PuzzleStatus,
+  type DifficultyPreference,
   type GameResult,
   type EngineLine,
   type TablebaseResult,
@@ -40,13 +41,14 @@ const userProfileStore = useUserProfileStore()
 const {
   isLoading,
   categoryOptions,
-  categoryExercises,
   currentExercise,
   currentTransformedFen,
   categoryPuzzleSolved,
   categoryPuzzleFailed,
   categoryPuzzleUnattempted,
-  categoryHiddenCounts,
+  categoryHiddenUncompletedCounts,
+  categoryEmptyReason,
+  categorySolveRatePercent,
   overallProgress,
   selectedCategory,
   requestedPuzzleNotFound,
@@ -602,14 +604,21 @@ const visibleCategoryOptions = computed(() => {
   return result
 })
 
-// Widens the difficulty preference just enough to include puzzles above the user's
-// level: 'around' -> 'aroundAndAbove', 'aroundAndBelow' -> 'all'. (Preferences that
-// already include everything above the user's level never hide puzzles as "too hard",
-// so this button can only ever be shown for those two starting values.)
-function allowSolvingTooHard(): void {
+// Widens the difficulty preference just enough to include puzzles on one side of the
+// user's level, e.g. towards 'above': 'around' -> 'aroundAndAbove', 'aroundAndBelow' ->
+// 'all'. (A preference that already includes everything on that side never hides puzzles
+// there, so the corresponding button can only ever be shown for those two starting values.)
+function widenDifficultyPreference(side: 'above' | 'below'): void {
   const current = profile.value?.difficultyPreference ?? 'around'
-  const next = current === 'aroundAndBelow' ? 'all' : 'aroundAndAbove'
-  userProfileStore.setDifficultyPreference(next)
+  const widened: DifficultyPreference =
+    side === 'above'
+      ? current === 'aroundAndBelow'
+        ? 'all'
+        : 'aroundAndAbove'
+      : current === 'aroundAndAbove'
+        ? 'all'
+        : 'aroundAndBelow'
+  userProfileStore.setDifficultyPreference(widened)
   store.onDifficultyPreferenceChanged()
 }
 
@@ -980,26 +989,55 @@ defineExpose({
             </button>
           </div>
 
-          <div v-else-if="!currentExercise && categoryExercises.length === 0" class="empty">
-            {{ t((s) => s.app.noMatchingExercises) }}
-          </div>
+          <template v-else-if="!currentExercise">
+            <div v-if="categoryEmptyReason === 'allCompleted'" class="empty celebrate">
+              <p>{{ t((s) => s.app.allCompletedInCategory) }}</p>
+              <p v-if="categorySolveRatePercent !== null">
+                {{ t((s) => s.app.categorySolveRate, { percent: categorySolveRatePercent }) }}
+              </p>
+            </div>
 
-          <div v-else-if="!currentExercise" class="empty celebrate">
-            <p>{{ t((s) => s.app.allSolvedInCategory) }}</p>
-            <p v-if="categoryHiddenCounts.tooHard > 0">
-              {{ t((s) => s.app.hiddenTooHard, { count: categoryHiddenCounts.tooHard }) }}
-            </p>
-            <button
-              v-if="categoryHiddenCounts.tooHard > 0"
-              class="btn-action btn-allow-harder"
-              @click="allowSolvingTooHard"
+            <!-- Uncompleted puzzles are left, they are just hidden by the difficulty
+                 preference: say how many, and offer to widen it. -->
+            <div
+              v-else-if="categoryEmptyReason === 'restHiddenByDifficulty'"
+              class="empty celebrate"
             >
-              {{ t((s) => s.app.allowSolvingTooHard) }}
-            </button>
-            <p v-if="categoryHiddenCounts.tooEasy > 0">
-              {{ t((s) => s.app.hiddenTooEasy, { count: categoryHiddenCounts.tooEasy }) }}
-            </p>
-          </div>
+              <p>{{ t((s) => s.app.noMoreAvailableInCategory) }}</p>
+              <template v-if="categoryHiddenUncompletedCounts.tooHard > 0">
+                <p>
+                  {{
+                    t((s) => s.app.hiddenTooHard, {
+                      count: categoryHiddenUncompletedCounts.tooHard,
+                    })
+                  }}
+                </p>
+                <button
+                  class="btn-action btn-allow-other-difficulty"
+                  @click="widenDifficultyPreference('above')"
+                >
+                  {{ t((s) => s.app.allowSolvingTooHard) }}
+                </button>
+              </template>
+              <template v-if="categoryHiddenUncompletedCounts.tooEasy > 0">
+                <p>
+                  {{
+                    t((s) => s.app.hiddenTooEasy, {
+                      count: categoryHiddenUncompletedCounts.tooEasy,
+                    })
+                  }}
+                </p>
+                <button
+                  class="btn-action btn-allow-other-difficulty"
+                  @click="widenDifficultyPreference('below')"
+                >
+                  {{ t((s) => s.app.allowSolvingTooEasy) }}
+                </button>
+              </template>
+            </div>
+
+            <div v-else class="empty">{{ t((s) => s.app.noMatchingExercises) }}</div>
+          </template>
 
           <!-- Engine status -->
           <div v-if="currentExercise && engineStatusText" class="engine-status">
@@ -1579,14 +1617,14 @@ defineExpose({
   color: var(--muted);
 }
 
-.btn-allow-harder {
+.btn-allow-other-difficulty {
   margin-top: 0.75rem;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--fg);
 }
 
-.btn-allow-harder:hover {
+.btn-allow-other-difficulty:hover {
   background: var(--hover-bg);
 }
 </style>
