@@ -11,6 +11,9 @@ import type {
 import { uciLineToPretty, toFigurineSan } from '@/utils/chess'
 import { flipCategory } from '@/composables/useLichessTablebase'
 import { useLocale } from '@/composables/useLocale'
+import { defaultEngineThreads, maxEngineThreads } from '@/composables/useStockfishEngine'
+import { useUserProfileStore } from '@/stores/userProfile'
+import { storeToRefs } from 'pinia'
 
 const props = defineProps<{
   lines: EngineLine[]
@@ -64,6 +67,8 @@ const hiddenTablebaseMoveCount = computed(() =>
   Math.max(0, (props.tablebaseResult?.moves.length ?? 0) - TABLEBASE_COLLAPSED_COUNT),
 )
 
+const MAX_NUM_LINES = 5
+
 const timeOptions = [
   { label: '8s', value: 8000 },
   { label: '16s', value: 16000 },
@@ -71,6 +76,34 @@ const timeOptions = [
   { label: '60s', value: 60000 },
   { label: '∞', value: Infinity },
 ]
+
+// The time slider works in option indexes, since the values themselves aren't evenly spaced.
+const selectedTimeIndex = computed(() => {
+  const index = timeOptions.findIndex((option) => option.value === props.settings.thinkingTimeMs)
+  return index === -1 ? 0 : index
+})
+
+const selectedTimeLabel = computed(() => timeOptions[selectedTimeIndex.value]?.label ?? '')
+
+function onThinkingTimeInput(event: Event): void {
+  const option = timeOptions[Number((event.target as HTMLInputElement).value)]
+  if (option) updateSettings({ thinkingTimeMs: option.value })
+}
+
+// Thread count is a device-wide preference rather than an analysis setting, so it is read
+// from and written to the profile store directly — App.vue's watcher pushes it to the engine.
+const userProfileStore = useUserProfileStore()
+const { profile } = storeToRefs(userProfileStore)
+
+const maxThreads = maxEngineThreads()
+
+const engineThreads = computed(() =>
+  Math.min(profile.value?.engineThreads ?? defaultEngineThreads(), maxThreads),
+)
+
+function onEngineThreadsInput(event: Event): void {
+  userProfileStore.setEngineThreads(Number((event.target as HTMLInputElement).value))
+}
 
 // Accepts underscore-separated FENs too, matching the format used in shareable URLs.
 function normalizeFenInput(value: string): string {
@@ -241,58 +274,73 @@ function submitFen(event: KeyboardEvent): void {
     </div>
 
     <div v-if="showSettings" class="settings-panel">
-      <div class="setting-row">
-        <span class="setting-label">{{ t((s) => s.analysis.thinkingTime) }}</span>
-        <div class="time-options">
-          <button
-            v-for="opt in timeOptions"
-            :key="opt.value"
-            class="time-btn"
-            :class="{ active: settings.thinkingTimeMs === opt.value }"
-            @click="updateSettings({ thinkingTimeMs: opt.value })"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="setting-row">
-        <span class="setting-label">
-          {{ t((s) => s.analysis.linesLabel, { count: settings.numLines }) }}
-        </span>
+      <div class="slider-settings">
+        <label class="setting-label" for="setting-num-lines">
+          {{ t((s) => s.analysis.numLines) }}
+        </label>
         <input
+          id="setting-num-lines"
           type="range"
-          min="1"
-          max="5"
-          :value="settings.numLines"
           class="slider"
-          @input="updateSettings({ numLines: parseInt(($event.target as HTMLInputElement).value) })"
+          min="1"
+          :max="MAX_NUM_LINES"
+          step="1"
+          :value="settings.numLines"
+          @input="updateSettings({ numLines: Number(($event.target as HTMLInputElement).value) })"
         />
+        <span class="setting-value">{{ settings.numLines }}</span>
+
+        <label class="setting-label" for="setting-search-time">
+          {{ t((s) => s.analysis.searchTime) }}
+        </label>
+        <input
+          id="setting-search-time"
+          type="range"
+          class="slider"
+          min="0"
+          :max="timeOptions.length - 1"
+          step="1"
+          :value="selectedTimeIndex"
+          @input="onThinkingTimeInput($event)"
+        />
+        <span class="setting-value">{{ selectedTimeLabel }}</span>
+
+        <label class="setting-label" for="setting-cpu-threads">
+          {{ t((s) => s.analysis.cpuThreads) }}
+        </label>
+        <input
+          id="setting-cpu-threads"
+          type="range"
+          class="slider"
+          min="1"
+          :max="maxThreads"
+          step="1"
+          :disabled="maxThreads === 1"
+          :value="engineThreads"
+          @input="onEngineThreadsInput($event)"
+        />
+        <span class="setting-value">{{ engineThreads }}</span>
       </div>
 
-      <div class="setting-row">
-        <label class="checkbox-label">
-          <input
-            type="checkbox"
-            :checked="settings.showBestArrow"
-            @change="updateSettings({ showBestArrow: ($event.target as HTMLInputElement).checked })"
-          />
-          {{ t((s) => s.analysis.showBestArrow) }}
-        </label>
-      </div>
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          :checked="settings.showBestArrow"
+          @change="updateSettings({ showBestArrow: ($event.target as HTMLInputElement).checked })"
+        />
+        {{ t((s) => s.analysis.showBestArrow) }}
+      </label>
 
-      <div class="setting-row">
-        <label class="checkbox-label">
-          <input
-            type="checkbox"
-            :checked="settings.showTablebaseArrow"
-            @change="
-              updateSettings({ showTablebaseArrow: ($event.target as HTMLInputElement).checked })
-            "
-          />
-          {{ t((s) => s.analysis.showTablebaseArrow) }}
-        </label>
-      </div>
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          :checked="settings.showTablebaseArrow"
+          @change="
+            updateSettings({ showTablebaseArrow: ($event.target as HTMLInputElement).checked })
+          "
+        />
+        {{ t((s) => s.analysis.showTablebaseArrow) }}
+      </label>
     </div>
 
     <div class="engine-lines">
@@ -510,49 +558,39 @@ function submitFen(event: KeyboardEvent): void {
   gap: 0.75rem;
 }
 
-.setting-row {
-  display: flex;
+/* One grid for all three sliders, so labels, tracks and values line up in columns
+   however long the translated labels are. */
+.slider-settings {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
 }
 
 .setting-label {
   font-size: 0.8rem;
   color: var(--muted);
-  min-width: 80px;
-}
-
-.time-options {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-}
-
-.time-btn {
-  padding: 0.2rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-
-.time-btn:hover {
-  background: var(--hover-bg);
-}
-
-.time-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #000;
 }
 
 .slider {
-  flex: 1;
+  width: 100%;
+  min-width: 0;
   accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.slider:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.setting-value {
+  min-width: 2.2rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  text-align: right;
 }
 
 .checkbox-label {

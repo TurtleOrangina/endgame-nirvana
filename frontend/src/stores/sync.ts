@@ -181,7 +181,8 @@ export const useSyncStore = defineStore('sync', () => {
                 boardTheme: profile.boardTheme,
                 pieceSet: profile.pieceSet,
                 lichessUsername: profile.lichessUsername,
-                engineThreads: profile.engineThreads,
+                // engineThreads is deliberately absent: it's a per-device setting
+                // (see userProfile.ts: setEngineThreads), not part of the synced profile.
               },
             })
             .eq('id', session.user.id)

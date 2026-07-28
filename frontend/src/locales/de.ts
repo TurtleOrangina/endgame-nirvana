@@ -90,8 +90,9 @@ export const de: typeof en = {
     calculating: 'Berechnet…',
     idle: 'Bereit',
     settings: 'Einstellungen',
-    thinkingTime: 'Bedenkzeit',
-    linesLabel: 'Varianten ({count})',
+    numLines: 'Anzahl Varianten',
+    searchTime: 'Suchzeit',
+    cpuThreads: 'CPU-Threads',
     showBestArrow: 'Pfeil für besten Engine-Zug anzeigen',
     showTablebaseArrow: 'Pfeil für besten Tablebase-Zug anzeigen',
     engineThinkingHint: 'Engine denkt nach…',
@@ -305,8 +306,7 @@ export const de: typeof en = {
     engine: {
       title: 'Engine',
       threadsLabel: 'CPU-Threads',
-      threadsHint:
-        'Mehr Threads machen die Engine stärker, beanspruchen aber das Gerät mehr. Die Voreinstellung entspricht ungefähr der Anzahl physischer Kerne.',
+      threadsHint: 'Mehr Threads verbessern die Zugauswahl, beanspruchen aber das Gerät stärker.',
     },
     accountTitle: 'Konto',
     endgameNirvanaAccountLabel: 'Endgame Nirvana Konto',

@@ -21,6 +21,12 @@ export function defaultEngineThreads(): number {
   return Math.min(MAX_DEFAULT_THREADS, Math.max(1, Math.floor(navigator.hardwareConcurrency / 2)))
 }
 
+// One core stays reserved for the UI, so the board never stutters while the engine thinks.
+// Also the ceiling a synced setting from a beefier device is clamped to.
+export function maxEngineThreads(): number {
+  return Math.max(1, navigator.hardwareConcurrency - 1)
+}
+
 // SharedArrayBuffer only exists in cross-origin isolated contexts; without it the
 // multi-threaded build cannot boot at all and the single-threaded fallback is used
 export function supportsMultiThreading(): boolean {
@@ -211,12 +217,7 @@ function createEngine(): StockfishEngine {
   }
 
   function setThreadCount(threads: number): void {
-    requestedThreads = Math.min(
-      Math.max(1, Math.round(threads)),
-      // The synced setting can come from a beefier device — never take this one's last
-      // core, which stays reserved for the UI
-      Math.max(1, navigator.hardwareConcurrency - 1),
-    )
+    requestedThreads = Math.min(Math.max(1, Math.round(threads)), maxEngineThreads())
     // When idle, rebuild the pool right away so the change doesn't stall the next move
     const isIdle = isReady.value && !resolveAnalysis && !awaitingStopAck && !pendingSearch
     if (usingMultiThreaded && isIdle && appliedThreads !== requestedThreads) {

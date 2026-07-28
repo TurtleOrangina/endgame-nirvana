@@ -6,6 +6,7 @@ import { useExercisesStore } from '@/stores/exercises'
 import { useAuthStore } from '@/stores/auth'
 import { useSyncStore } from '@/stores/sync'
 import { useLichessAuth } from '@/composables/useLichessAuth'
+import { maxEngineThreads } from '@/composables/useStockfishEngine'
 import { useLocale } from '@/composables/useLocale'
 import { isValidEmail } from '@/utils/email'
 import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
@@ -161,8 +162,7 @@ function onLanguageChange(event: Event): void {
   userProfileStore.setLanguage(value)
 }
 
-// One core stays reserved for the UI, so the board never stutters while the engine thinks
-const maxEngineThreads = Math.max(1, navigator.hardwareConcurrency - 1)
+const maxThreads = maxEngineThreads()
 
 function onEngineThreadsChange(event: Event): void {
   userProfileStore.setEngineThreads(Number((event.target as HTMLInputElement).value))
@@ -347,14 +347,12 @@ const deleteAccountLabel = computed(() =>
               type="range"
               class="threads-slider"
               min="1"
-              :max="maxEngineThreads"
+              :max="maxThreads"
               step="1"
-              :value="Math.min(profile.engineThreads, maxEngineThreads)"
+              :value="Math.min(profile.engineThreads, maxThreads)"
               @input="onEngineThreadsChange"
             />
-            <span class="threads-value">{{
-              Math.min(profile.engineThreads, maxEngineThreads)
-            }}</span>
+            <span class="threads-value">{{ Math.min(profile.engineThreads, maxThreads) }}</span>
           </div>
           <p class="ident-hint">{{ t((s) => s.profile.engine.threadsHint) }}</p>
         </div>

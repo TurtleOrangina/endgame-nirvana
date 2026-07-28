@@ -230,12 +230,13 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     useSyncStore().markProfileDirty()
   }
 
+  // Device-local on purpose — no markProfileDirty, so a 28-thread desktop never pushes
+  // that count onto an 8-core phone sharing the account (see applyRemoteProfile).
   function setEngineThreads(threads: number): void {
     const p = profile.value
     if (!p) return
     p.engineThreads = threads
     persistProfile(p)
-    useSyncStore().markProfileDirty()
   }
 
   function setLichessUsername(username: string | null): void {
@@ -270,8 +271,11 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       boardTheme?: BoardThemeId
       pieceSet?: PieceSetId
       lichessUsername?: string | null
-      engineThreads?: number
     } | null
+
+    // Deliberately not taken from the cloud: how many threads the engine may use depends
+    // on the cores of the device it runs on, so it stays whatever this device chose.
+    const deviceEngineThreads = profile.value?.engineThreads ?? defaultEngineThreads()
 
     profile.value = {
       username: remote.username,
@@ -299,7 +303,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       boardTheme: boardThemeOrDefault(settings?.boardTheme),
       pieceSet: pieceSetOrDefault(settings?.pieceSet),
       lichessUsername: settings?.lichessUsername ?? null,
-      engineThreads: settings?.engineThreads ?? defaultEngineThreads(),
+      engineThreads: deviceEngineThreads,
     }
     persistProfile(profile.value)
   }
