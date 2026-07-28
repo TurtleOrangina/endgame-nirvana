@@ -42,7 +42,7 @@ const activeIcon = computed<NavIconName>(
 )
 
 function onNavigate(view: NavView): void {
-  if (dropdownRef.value) dropdownRef.value.open = false
+  closeMenu()
   if (view !== props.activeView) emit('navigate', view)
 }
 
@@ -65,10 +65,30 @@ const appearancePanelTitle = computed(() =>
     : t((s) => s.profile.appearance.pieceSetTitle),
 )
 
+// `details.open` is a plain DOM property, so the backdrop needs this mirror of it to
+// react to the menu opening and closing.
+const menuOpen = ref(false)
+
 // Reopening the menu always starts at the top level, so it never comes back in a
 // submenu the user left behind minutes ago.
 function onMenuToggle(): void {
-  if (!dropdownRef.value?.open) menuPanel.value = 'main'
+  menuOpen.value = dropdownRef.value?.open ?? false
+  if (!menuOpen.value) menuPanel.value = 'main'
+}
+
+// The open menu is modal: the backdrop swallows the interaction that dismisses it, so a
+// click outside only closes the menu rather than also landing on the board (making a
+// move) or the category dropdown behind it. Closing on pointerdown — with the default
+// prevented — is what stops Chessground from ever seeing the press that would start a
+// drag; a plain click handler would already be too late.
+function closeMenu(): void {
+  if (dropdownRef.value) dropdownRef.value.open = false
+  menuOpen.value = false
+  menuPanel.value = 'main'
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && menuOpen.value) closeMenu()
 }
 
 const versusSides = computed<SidePieces[]>(() =>
@@ -96,10 +116,12 @@ let titleRowResizeObserver: ResizeObserver | null = null
 onMounted(() => {
   titleRowResizeObserver = new ResizeObserver(measureVersusFit)
   if (titleRowRef.value) titleRowResizeObserver.observe(titleRowRef.value)
+  window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   titleRowResizeObserver?.disconnect()
+  window.removeEventListener('keydown', onKeydown)
 })
 
 watch(
@@ -159,6 +181,8 @@ watch(
         {{ username }}
         <NavIcon icon="chevron-down" class="menu-chevron" />
       </summary>
+
+      <div v-if="menuOpen" class="menu-backdrop" @pointerdown.stop.prevent="closeMenu" />
 
       <div class="dropdown-panel" :class="{ 'appearance-panel': menuPanel !== 'main' }">
         <template v-if="menuPanel === 'main'">
@@ -322,7 +346,11 @@ watch(
   white-space: nowrap;
 }
 
+/* Lifted above the backdrop while open, so the menu itself — and the button that closes
+   it again — stay clickable. */
 .dropdown[open] .btn-profile-nav {
+  position: relative;
+  z-index: 151;
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -352,11 +380,20 @@ watch(
   background: var(--hover-bg);
 }
 
+/* Covers the whole viewport under the menu, above everything the pages draw (the
+   category dropdown in TrainingPage also sits at z-index 100) but below the app-level
+   modals at 200. */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
 .dropdown-panel {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 100;
+  z-index: 151;
   min-width: 180px;
   background: var(--surface);
   border: 1px solid var(--border);
