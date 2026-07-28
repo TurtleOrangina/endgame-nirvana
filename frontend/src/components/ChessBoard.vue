@@ -60,16 +60,25 @@ const TEMPERATURE = 0.2 // the engine defends accurately
 // On pawnless retrys more variance is accepted, to see more variations
 const TEMPERATURE_PAWNLESS_RETRY = 0.6
 
-// User-drawn arrows/marked squares are coloured by the modifier key held when the
-// right-click drag starts: none = blue, Alt = red, Ctrl = green, Shift = yellow.
-// Chessground's built-in modifier-to-brush mapping can't tell Shift and Ctrl apart (both
-// collapse to the same slot), so we pick the brush ourselves — see
+// User-drawn arrows/marked squares are coloured by the modifier keys held when the
+// right-click drag starts — every combination of Ctrl/Alt/Shift gets its own colour, see
+// userArrowColorForEvent. Chessground's built-in modifier-to-brush mapping only has four
+// slots and can't tell Shift and Ctrl apart, so we pick the brush ourselves — see
 // attachUserShapeColorOverride — instead of relying on it.
-const USER_SHAPE_BRUSHES: Record<BrushColor, { key: string; color: string }> = {
+// The unmodified and Shift-free combinations carry the colours worth reaching quickly:
+// Firefox lets Shift+right-click bypass a page's contextmenu handler, so every Shift
+// binding pops the native menu unless drawn with a left-drag instead.
+type UserBrushName = BrushColor | 'purple' | 'orange' | 'cyan' | 'pink'
+
+const USER_SHAPE_BRUSHES: Record<UserBrushName, { key: string; color: string }> = {
   blue: { key: 'ub', color: '#3b82f6' },
   red: { key: 'ur', color: '#dc2626' },
   green: { key: 'ug', color: '#22c55e' },
   yellow: { key: 'uy', color: '#e6b800' },
+  purple: { key: 'up', color: '#a855f7' },
+  orange: { key: 'uo', color: '#f97316' },
+  cyan: { key: 'uc', color: '#06b6d4' },
+  pink: { key: 'un', color: '#ec4899' },
 }
 const USER_ARROW_MARKERS = new Set(
   Object.values(USER_SHAPE_BRUSHES).map((brush) => `url(#arrowhead-${brush.key})`),
@@ -271,19 +280,24 @@ function hexToRgba(hex: string, alpha: number): string {
 function squareTintColor(brush: string | undefined): string {
   const color =
     brush && brush in USER_SHAPE_BRUSHES
-      ? USER_SHAPE_BRUSHES[brush as BrushColor].color
+      ? USER_SHAPE_BRUSHES[brush as UserBrushName].color
       : USER_SHAPE_BRUSHES.blue.color
   return hexToRgba(color, SQUARE_TINT_ALPHA)
 }
 
-// Chessground restricts drawable shapes to one of four fixed brush slots
-// ('blue'/'red'/'green'/'yellow'). Its own eventBrush() picks a slot from the modifier
-// keys held at drag-start, but conflates Shift and Ctrl into the same slot — so we
-// override the slot it picked right after mousedown, using our own mapping instead.
-function userArrowColorForEvent(e: MouseEvent): BrushColor {
+// Chessground's own eventBrush() picks a brush from the modifier keys held at drag-start,
+// but conflates Shift and Ctrl into the same slot — so we override the brush it picked
+// right after mousedown, using our own mapping instead.
+// Most-specific combination first, so a two- or three-key chord isn't swallowed by the
+// single-modifier case it contains.
+function userArrowColorForEvent(e: MouseEvent): UserBrushName {
+  if (e.ctrlKey && e.altKey && e.shiftKey) return 'pink'
+  if (e.ctrlKey && e.altKey) return 'yellow'
+  if (e.ctrlKey && e.shiftKey) return 'orange'
+  if (e.altKey && e.shiftKey) return 'cyan'
   if (e.altKey) return 'red'
   if (e.ctrlKey) return 'green'
-  if (e.shiftKey) return 'yellow'
+  if (e.shiftKey) return 'purple'
   return 'blue'
 }
 
@@ -292,7 +306,9 @@ function attachUserShapeColorOverride(boardCg: HTMLElement): void {
     'mousedown',
     (e) => {
       const current = cg?.state.drawable.current
-      if (current) current.brush = userArrowColorForEvent(e)
+      // Chessground types the in-progress brush as its four built-in slots, but looks it
+      // up in an open-ended brushes record — so a brush of ours renders fine.
+      if (current) current.brush = userArrowColorForEvent(e) as BrushColor
     },
     { passive: false },
   )
@@ -775,14 +791,26 @@ function setupBoard(fen: string): void {
         red: { ...USER_SHAPE_BRUSHES.red, opacity: 1, lineWidth: 10 },
         green: { ...USER_SHAPE_BRUSHES.green, opacity: 1, lineWidth: 10 },
         yellow: { ...USER_SHAPE_BRUSHES.yellow, opacity: 1, lineWidth: 10 },
+        purple: { ...USER_SHAPE_BRUSHES.purple, opacity: 1, lineWidth: 10 },
+        orange: { ...USER_SHAPE_BRUSHES.orange, opacity: 1, lineWidth: 10 },
+        cyan: { ...USER_SHAPE_BRUSHES.cyan, opacity: 1, lineWidth: 10 },
+        pink: { ...USER_SHAPE_BRUSHES.pink, opacity: 1, lineWidth: 10 },
         engineBest: { key: 'eb', color: '#6b7280', opacity: 0.8, lineWidth: 10 },
         tablebaseBest: { key: 'tb', color: '#e6c200', opacity: 0.8, lineWidth: 10 },
         moveHover: { key: 'mh', color: '#22c55e', opacity: 0.8, lineWidth: 10 },
       },
     },
   })
+  attachBoardDomHooks()
+}
+
+// Everything we hang off Chessground's own DOM. Chessground rebuilds that DOM from
+// scratch — new cg-board, new shapes group — on construction *and* on every redrawAll,
+// so these have to be re-attached each time or they silently keep pointing at the
+// discarded nodes (which is how user arrows lost their colour override and their inset).
+function attachBoardDomHooks(): void {
   observeUserArrows()
-  const boardCg = boardEl.value.querySelector<HTMLElement>('cg-board')
+  const boardCg = boardEl.value?.querySelector<HTMLElement>('cg-board')
   if (boardCg) attachUserShapeColorOverride(boardCg)
 }
 
@@ -1367,7 +1395,12 @@ function restoreBoardSnapshot(
 // Chessground caches the board's pixel bounds; if the window is resized while the
 // training view is hidden (v-show), those go stale — re-measure when it's shown again.
 function redraw(): void {
-  cg?.redrawAll()
+  if (!cg) return
+  cg.redrawAll()
+  attachBoardDomHooks()
+  // Chessground redraws its own shapes from state, but the square tints are ours and
+  // were wiped with the old cg-board — without an onChange to rebuild them.
+  applySquareTints(cg.state.drawable.shapes)
 }
 
 function loadFen(fen: string): boolean {
