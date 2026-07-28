@@ -25,7 +25,14 @@ const dropdownRef = ref<HTMLDetailsElement | null>(null)
 
 type NavIconName = 'dumbbell' | 'trending-up' | 'file-search' | 'settings' | 'info'
 
-const navItems: { view: NavView; label: () => string; icon: NavIconName }[] = [
+interface NavItem {
+  view: NavView
+  label: () => string
+  icon: NavIconName
+}
+
+// The pages the user moves between while actually training, kept together at the top.
+const pageNavItems: NavItem[] = [
   { view: 'training', label: () => t((s) => s.app.navTraining), icon: 'dumbbell' },
   { view: 'solveProgress', label: () => t((s) => s.profile.solveProgress), icon: 'trending-up' },
   {
@@ -33,12 +40,18 @@ const navItems: { view: NavView; label: () => string; icon: NavIconName }[] = [
     label: () => t((s) => s.profile.browseExercises),
     icon: 'file-search',
   },
+]
+
+// Rarely visited, so they sit last — below the appearance submenus, which are used often.
+const metaNavItems: NavItem[] = [
   { view: 'settings', label: () => t((s) => s.profile.settingsTitle), icon: 'settings' },
   { view: 'about', label: () => t((s) => s.about.navTitle), icon: 'info' },
 ]
 
 const activeIcon = computed<NavIconName>(
-  () => navItems.find((item) => item.view === props.activeView)?.icon ?? 'dumbbell',
+  () =>
+    [...pageNavItems, ...metaNavItems].find((item) => item.view === props.activeView)?.icon ??
+    'dumbbell',
 )
 
 function onNavigate(view: NavView): void {
@@ -187,7 +200,7 @@ watch(
       <div class="dropdown-panel" :class="{ 'appearance-panel': menuPanel !== 'main' }">
         <template v-if="menuPanel === 'main'">
           <div
-            v-for="item in navItems"
+            v-for="item in pageNavItems"
             :key="item.view"
             class="option"
             :class="{ selected: activeView === item.view }"
@@ -208,6 +221,19 @@ watch(
             <NavIcon icon="crown" class="option-icon" />
             <span class="option-label">{{ t((s) => s.profile.appearance.pieceSetTitle) }}</span>
             <NavIcon icon="chevron-right" class="option-icon submenu-arrow" />
+          </div>
+
+          <div class="panel-divider" />
+
+          <div
+            v-for="item in metaNavItems"
+            :key="item.view"
+            class="option"
+            :class="{ selected: activeView === item.view }"
+            @click="onNavigate(item.view)"
+          >
+            <NavIcon :icon="item.icon" class="option-icon" />
+            <span class="option-label">{{ item.label() }}</span>
           </div>
         </template>
 

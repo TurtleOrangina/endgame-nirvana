@@ -325,12 +325,12 @@ const deleteAccountLabel = computed(() =>
         </select>
       </div>
 
-      <div v-if="profile" class="ident-row ident-row-top">
+      <div v-if="profile" class="ident-row ident-row-top ident-row-appearance">
         <span class="ident-label">{{ t((s) => s.profile.appearance.boardTitle) }}</span>
         <AppearanceSwatchGrid kind="board" class="ident-swatches" />
       </div>
 
-      <div v-if="profile" class="ident-row ident-row-top">
+      <div v-if="profile" class="ident-row ident-row-top ident-row-appearance">
         <span class="ident-label">{{ t((s) => s.profile.appearance.pieceSetTitle) }}</span>
         <AppearanceSwatchGrid kind="pieces" class="ident-swatches" />
       </div>
@@ -555,6 +555,20 @@ const deleteAccountLabel = computed(() =>
 .ident-swatches {
   flex: 1;
   min-width: 0;
+}
+
+/* Too narrow for four swatches beside the label (190px label + 4×72px swatches
+   + gaps + section padding): drop the grid onto its own full-width line instead
+   of letting it collapse into a single very tall column. */
+@media (max-width: 588px) {
+  .ident-row-appearance {
+    gap: 0.35rem;
+  }
+
+  .ident-row-appearance .ident-label {
+    width: 100%;
+    padding-top: 0;
+  }
 }
 
 .btn-success-outline {
