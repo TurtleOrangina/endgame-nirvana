@@ -205,10 +205,12 @@ function persistTrainingState(): void {
 
 onMounted(() => {
   window.addEventListener('pagehide', persistTrainingState)
+  document.addEventListener('keydown', onNextPuzzleShortcut)
 })
 
 onUnmounted(() => {
   window.removeEventListener('pagehide', persistTrainingState)
+  document.removeEventListener('keydown', onNextPuzzleShortcut)
   clearTimeout(linkCopiedTimeout)
 })
 
@@ -449,6 +451,25 @@ function onNext(): void {
   history.pushState(null, '', window.location.href)
   hideWrongSolutionFlash()
   store.advanceToNext()
+}
+
+// Mirrors the visibility of the "Next" button, so the shortcut only fires when the
+// button it stands for is actually on screen.
+const canGoToNextPuzzle = computed(
+  () =>
+    props.active &&
+    !isAnalysisMode.value &&
+    !!currentExercise.value &&
+    puzzleStatus.value !== PuzzleStatus.SOLVING,
+)
+
+function onNextPuzzleShortcut(event: KeyboardEvent): void {
+  if (event.key !== 'n' || event.ctrlKey || event.metaKey || event.altKey) return
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
+    return
+  if (!canGoToNextPuzzle.value) return
+  event.preventDefault()
+  onNext()
 }
 
 function onSurrender(): void {

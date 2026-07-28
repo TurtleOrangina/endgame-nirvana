@@ -24,7 +24,7 @@ export const en = {
     retry: 'Retry',
     retryTitle: 'Retry this puzzle',
     next: 'Next',
-    nextTitle: 'Next puzzle',
+    nextTitle: 'Next puzzle (shortcut: N)',
     wrongSolution: 'Wrong solution!',
     analyse: 'Analyse',
     share: 'Share puzzle',
