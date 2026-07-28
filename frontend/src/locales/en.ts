@@ -8,6 +8,8 @@ export const en = {
     collapse: 'Collapse',
     enterValidEmail: 'Enter a valid email address.',
     forgotPassword: 'Forgot password?',
+    or: 'or',
+    continueWithGoogle: 'Continue with Google',
     resetEmailSent:
       'A password reset email was sent to {email}. Click the link in it to choose a new password.',
   },
@@ -305,6 +307,7 @@ export const en = {
     signedInAs: 'Signed in as',
     trainingLocallyOnly: 'Training locally on this device only.',
     noAccount: 'None',
+    signedInWithGoogle: 'Signed in with Google',
     logOut: 'Log Out',
     deleteAccount: 'Delete Account',
     deleteProgress: 'Delete Progress',

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useExercisesStore } from '@/stores/exercises'
 import { useLichessAuth } from '@/composables/useLichessAuth'
+import { useAuthStore } from '@/stores/auth'
 import type { Json, Tables } from '@/types/database'
 
 const OUTBOX_STORAGE_KEY = 'syncOutbox'
@@ -73,6 +74,10 @@ export const useSyncStore = defineStore('sync', () => {
   const profileDirty = ref(loadProfileDirty())
   const isSyncing = ref(false)
   const lastSyncError = ref<string | null>(null)
+  // Set when a Google sign-in landed on a cloud profile that has never been
+  // onboarded and there is no local profile to adopt — SetupModal collects the
+  // nickname and starting level, then calls initialize_oauth_profile.
+  const oauthOnboardingRequired = ref(false)
   const pendingCount = computed(() => outbox.value.length + (profileDirty.value ? 1 : 0))
 
   function enqueueAttempt(attempt: PendingAttempt): void {
@@ -229,6 +234,31 @@ export const useSyncStore = defineStore('sync', () => {
       // If the push above failed (profileDirty/lastSyncError still set), the
       // cloud row we just fetched is known-stale — applying it would overwrite
       // correct local progress with old data instead of leaving it queued.
+      // A null username means `handle_new_user` created this row during a Google
+      // redirect, before anyone could be asked for a nickname or a starting level
+      // (see the initialize_oauth_profile migration). Applying it would overwrite a
+      // local profile with a blank one, so it's claimed instead: an existing local
+      // profile is adopted as-is, and a first-time user is sent to the wizard.
+      if (state.profile && state.profile.username === null) {
+        const localProfile = useUserProfileStore().profile
+        if (!localProfile) {
+          oauthOnboardingRequired.value = true
+          lastSyncError.value = null
+          return
+        }
+        const { error: initError } = await useAuthStore().initializeOAuthProfile(
+          localProfile.username,
+          localProfile.endgameElo,
+        )
+        if (initError) throw new Error(initError)
+        // The settings blob isn't covered by the RPC — queue the normal profile
+        // push so this device's preferences reach the new cloud row too.
+        markProfileDirty()
+        await flush()
+        lastSyncError.value = null
+        return
+      }
+
       if (state.profile && !profileDirty.value && !lastSyncError.value) {
         const eloBeforePull = useUserProfileStore().profile?.endgameElo ?? null
         useUserProfileStore().applyRemoteProfile(state.profile, state.attempts)
@@ -265,6 +295,7 @@ export const useSyncStore = defineStore('sync', () => {
     profileDirty,
     isSyncing,
     lastSyncError,
+    oauthOnboardingRequired,
     pendingCount,
     enqueueAttempt,
     markProfileDirty,

@@ -69,6 +69,13 @@ export const useAuthStore = defineStore('auth', () => {
   const isSignedIn = computed(() => session.value !== null)
   const userEmail = computed(() => session.value?.user.email ?? null)
 
+  // A Google-only account has no password, so offering "forgot password" or a
+  // password change would send the user to a dead end.
+  const hasPasswordIdentity = computed(
+    () =>
+      session.value?.user.identities?.some((identity) => identity.provider === 'email') ?? false,
+  )
+
   function setPendingRegistration(registration: PendingRegistration | null): void {
     pendingRegistration.value = registration
     if (registration) {
@@ -219,6 +226,39 @@ export const useAuthStore = defineStore('auth', () => {
     return signUp(pending.email, password, pending.username, pending.startElo)
   }
 
+  // Redirects the whole page to Google, so a resolved result without an error
+  // just means the navigation was accepted — the outcome arrives on the way back
+  // in, where supabase-js exchanges the `?code=` during init(). Any wizard state
+  // that must survive the round trip has to be persisted by the caller first
+  // (see SetupModal's draft), exactly as with the Lichess link flow.
+  async function signInWithGoogle(): Promise<AuthActionResult> {
+    if (!supabase) return { error: 'Backend not configured' }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    })
+    if (!error) return { error: null }
+    return {
+      error: friendlyAuthErrorMessage(error),
+      serverUnreachable: isServerUnreachable(error),
+    }
+  }
+
+  // Google returns no signup metadata, so `handle_new_user` creates the profile
+  // row with a null username — the marker for "signed in, onboarding unfinished".
+  // The RPC only ever fills a null username, so this can't reset a played-in Elo.
+  async function initializeOAuthProfile(
+    username: string,
+    startElo: number,
+  ): Promise<AuthActionResult> {
+    if (!supabase) return { error: 'Backend not configured' }
+    const { error } = await supabase.rpc('initialize_oauth_profile', {
+      p_username: username,
+      p_start_elo: startElo,
+    })
+    return { error: error ? error.message : null }
+  }
+
   async function signIn(email: string, password: string): Promise<AuthActionResult> {
     if (!supabase) return { error: 'Backend not configured' }
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -307,6 +347,9 @@ export const useAuthStore = defineStore('auth', () => {
     signUp,
     retryPendingRegistration,
     signIn,
+    signInWithGoogle,
+    initializeOAuthProfile,
+    hasPasswordIdentity,
     retryLoginAfterConfirmation,
     signOut,
     deleteAccount,

@@ -278,7 +278,9 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     const deviceEngineThreads = profile.value?.engineThreads ?? defaultEngineThreads()
 
     profile.value = {
-      username: remote.username,
+      // pullRemoteState claims an un-onboarded (null-username) row before it ever
+      // reaches this merge, so the fallbacks only satisfy the column's nullability.
+      username: remote.username ?? profile.value?.username ?? '',
       endgameElo: remote.endgame_elo,
       // Counters are server-derived from synced attempts (record_attempts
       // increments them), no longer client-reported.

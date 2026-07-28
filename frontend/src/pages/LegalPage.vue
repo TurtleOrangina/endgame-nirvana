@@ -145,6 +145,14 @@ function showPage(target: 'impressum' | 'datenschutz'): void {
         <li>App-Einstellungen (z. B. Farbschema, Analyse-Präferenzen)</li>
       </ul>
       <p>
+        <strong>Optional: Anmeldung mit Google.</strong> Meldest du dich mit deinem Google-Konto an,
+        erhalten wir von Google eine pseudonyme Konto-Kennung (<code>sub</code>) sowie deine
+        E-Mail-Adresse. Weitere von Google mitgesendete Angaben — insbesondere Vor- und Nachname,
+        Profilbild und Spracheinstellung — werden bereits beim Empfang automatisch verworfen und
+        nicht gespeichert. Ein Passwort wird für solche Konten nicht angelegt. Deine
+        Google-Zugangsdaten gibst du ausschließlich bei Google ein, nie in dieser App.
+      </p>
+      <p>
         <strong>Optional: Lichess-Kontoverknüpfung.</strong> Verknüpfst du dein Lichess-Konto (für
         Tablebase-Funktionen), speichern wir deinen öffentlichen Lichess-Benutzernamen in deinem
         Profil. Die Anmeldung selbst läuft über den offiziellen OAuth-Login von lichess.org; deine
@@ -155,7 +163,8 @@ function showPage(target: 'impressum' | 'datenschutz'): void {
       <p>
         Die Verarbeitung erfolgt zur Erfüllung des von dir angeforderten Trainingskontos (Art. 6
         Abs. 1 lit. b DSGVO) bzw., soweit optionale Funktionen wie die Lichess-Verknüpfung betroffen
-        sind, auf Grundlage deiner Einwilligung (Art. 6 Abs. 1 lit. a DSGVO).
+        oder die Anmeldung mit Google sind, auf Grundlage deiner Einwilligung (Art. 6 Abs. 1 lit. a
+        DSGVO).
       </p>
 
       <h2>5. Empfänger / Auftragsverarbeiter</h2>
@@ -173,6 +182,16 @@ function showPage(target: 'impressum' | 'datenschutz'): void {
           verarbeitet.
         </li>
         <li>
+          <strong>Google Ireland Limited</strong> – nur bei Nutzung der Anmeldung mit Google: Beim
+          Klick auf „Weiter mit Google“ wirst du zu Google weitergeleitet, wobei deine IP-Adresse,
+          Browserangaben und der Zeitpunkt des Anmeldeversuchs an Google übertragen werden. Google
+          handelt dabei als eigenständig Verantwortlicher, nicht als Auftragsverarbeiter. Die damit
+          verbundene Übermittlung an Google LLC in den USA stützt sich auf den
+          Angemessenheitsbeschluss der Europäischen Kommission zum EU-US Data Privacy Framework
+          (Art. 45 DSGVO), unter dem Google LLC zertifiziert ist. Du kannst den Zugriff jederzeit in
+          den Kontoeinstellungen deines Google-Kontos widerrufen.
+        </li>
+        <li>
           <strong>Lichess.org</strong> – nur bei Nutzung der Tablebase-/Analysefunktion: die
           aktuelle Brettstellung (FEN) wird an <code>tablebase.lichess.ovh</code> übermittelt, wobei
           zwangsläufig deine IP-Adresse an Lichess übertragen wird. Der Schachmotor (Stockfish)
@@ -184,7 +203,9 @@ function showPage(target: 'impressum' | 'datenschutz'): void {
       <p>
         Diese App verwendet keine Analyse-, Tracking- oder Werbe-Cookies und keine
         Drittanbieter-Analysewerkzeuge. Es werden keine Cookies gesetzt; eine Sitzung wird
-        ausschließlich über <code>localStorage</code> in deinem Browser verwaltet.
+        ausschließlich über <code>localStorage</code> in deinem Browser verwaltet. Nutzt du die
+        Anmeldung mit Google, setzt Google auf seinen eigenen Anmeldeseiten eigene Cookies — darauf
+        haben wir keinen Einfluss.
       </p>
 
       <h2>7. Speicherdauer</h2>

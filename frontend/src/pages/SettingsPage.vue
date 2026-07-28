@@ -10,6 +10,7 @@ import { maxEngineThreads } from '@/composables/useStockfishEngine'
 import { useLocale } from '@/composables/useLocale'
 import { isValidEmail } from '@/utils/email'
 import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
+import GoogleSignInButton from '@/components/GoogleSignInButton.vue'
 import AppearanceSwatchGrid from '@/components/AppearanceSwatchGrid.vue'
 import type { DifficultyPreference, Language, ThemeMode } from '@/types'
 
@@ -68,6 +69,16 @@ async function onAccountSubmit(): Promise<void> {
   } else {
     accountPassword.value = ''
   }
+}
+
+const googleError = ref<string | null>(null)
+
+async function onContinueWithGoogle(): Promise<void> {
+  googleError.value = null
+  accountError.value = null
+  const result = await authStore.signInWithGoogle()
+  // Only reached when the redirect never happened — otherwise the page is gone.
+  if (result.error) googleError.value = result.error
 }
 
 async function onForgotPassword(): Promise<void> {
@@ -249,6 +260,14 @@ const deleteAccountLabel = computed(() =>
           </button>
         </form>
 
+        <div class="auth-divider">
+          <span>{{ t((s) => s.common.or) }}</span>
+        </div>
+        <!-- Adopts this device's existing local profile (nickname, Elo, settings)
+             into the new cloud account — see sync.ts's un-onboarded profile branch. -->
+        <GoogleSignInButton :disabled="accountSubmitting" @click="onContinueWithGoogle" />
+        <p v-if="googleError" class="error-message">{{ googleError }}</p>
+
         <p class="section-desc">
           <button
             type="button"
@@ -391,6 +410,12 @@ const deleteAccountLabel = computed(() =>
         <div class="ident-stack">
           <span :class="authStore.isSignedIn ? 'status-positive' : 'status-warning'">
             {{ authStore.isSignedIn ? authStore.userEmail : t((s) => s.profile.noAccount) }}
+          </span>
+          <span
+            v-if="authStore.isSignedIn && !authStore.hasPasswordIdentity"
+            class="ident-provider"
+          >
+            {{ t((s) => s.profile.signedInWithGoogle) }}
           </span>
           <div class="ident-actions">
             <button v-if="authStore.isSignedIn" class="btn-danger-outline" @click="onSignOut">
@@ -641,6 +666,30 @@ const deleteAccountLabel = computed(() =>
   background: var(--color-warning-bg);
   color: var(--color-warning-fg);
   font-size: 0.875rem;
+}
+
+.ident-provider {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.9rem 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 
 .account-form {

@@ -10,6 +10,8 @@ export const de: typeof en = {
     collapse: 'Einklappen',
     enterValidEmail: 'Gib eine gültige E-Mail-Adresse ein.',
     forgotPassword: 'Passwort vergessen?',
+    or: 'oder',
+    continueWithGoogle: 'Weiter mit Google',
     resetEmailSent:
       'Eine E-Mail zum Zurücksetzen des Passworts wurde an {email} gesendet. Klicke auf den Link darin, um ein neues Passwort zu wählen.',
   },
@@ -313,6 +315,7 @@ export const de: typeof en = {
     signedInAs: 'Angemeldet als',
     trainingLocallyOnly: 'Training nur lokal auf diesem Gerät.',
     noAccount: 'Keines',
+    signedInWithGoogle: 'Angemeldet mit Google',
     logOut: 'Abmelden',
     deleteAccount: 'Konto löschen',
     deleteProgress: 'Fortschritt löschen',

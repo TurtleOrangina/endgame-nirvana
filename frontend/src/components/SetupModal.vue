@@ -3,9 +3,11 @@ import { computed, ref, watch } from 'vue'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useExercisesStore } from '@/stores/exercises'
 import { useAuthStore } from '@/stores/auth'
+import { useSyncStore } from '@/stores/sync'
 import { useLichessAuth } from '@/composables/useLichessAuth'
 import { useLocale } from '@/composables/useLocale'
 import AboutContent from '@/components/AboutContent.vue'
+import GoogleSignInButton from '@/components/GoogleSignInButton.vue'
 import { isValidEmail } from '@/utils/email'
 import type { en } from '@/locales/en'
 
@@ -15,6 +17,7 @@ type SetupMode = 'new' | 'signin'
 type NewUserStep = 'basics' | 'lichess' | 'account' | 'confirmation' | 'welcome'
 
 interface SetupDraft {
+  redirectFlow: 'lichess' | 'google'
   step: NewUserStep
   username: string
   startElo: number
@@ -27,6 +30,7 @@ const emit = defineEmits<{ close: [] }>()
 const userProfileStore = useUserProfileStore()
 const exercisesStore = useExercisesStore()
 const authStore = useAuthStore()
+const syncStore = useSyncStore()
 const lichessAuth = useLichessAuth()
 const { t } = useLocale()
 
@@ -104,11 +108,12 @@ const isLoggingIn = ref(false)
 const loginError = ref<string | null>(null)
 const isServerUnreachable = ref(false)
 
-// Only restored when returning from the Lichess OAuth redirect (see linkLichess) — the
-// step is saved too so the user lands back where they left off, not at the first page.
-function restoreDraft(): void {
+// Only restored when returning from an OAuth redirect (see saveDraft) — the step is
+// saved too so the user lands back where they left off, not at the first page.
+// Which flow wrote it matters: see returnedFromGoogleRedirect below.
+function restoreDraft(): SetupDraft | null {
   const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY)
-  if (!raw) return
+  if (!raw) return null
   sessionStorage.removeItem(DRAFT_STORAGE_KEY)
   try {
     const draft = JSON.parse(raw) as SetupDraft
@@ -118,15 +123,28 @@ function restoreDraft(): void {
     startElo.value = startingLevelAt(closestStartingLevelIndex(draft.startElo)).elo
     email.value = draft.email
     password.value = draft.password
+    return draft
   } catch {
     // Ignore malformed draft data.
+    return null
   }
 }
 
-restoreDraft()
+const restoredDraft = restoreDraft()
 
-function linkLichess(): void {
+// Whether *this tab* actually sent the user to Google, rather than merely having a
+// draft lying around. The OAuth onboarding below skips straight past the nickname
+// and starting-level questions when it holds answers already, so it must not treat
+// an abandoned wizard run (or a Lichess link draft) as those questions having been
+// asked — that would silently create the account with stale answers the user never
+// saw. sessionStorage is per-tab and cleared with it, so this can't leak across tabs.
+const returnedFromGoogleRedirect = restoredDraft?.redirectFlow === 'google'
+
+// Shared by both redirect flows: the whole page navigates away, so anything already
+// typed has to outlive it.
+function saveDraft(redirectFlow: SetupDraft['redirectFlow']): void {
   const draft: SetupDraft = {
+    redirectFlow,
     step: step.value,
     username: username.value,
     startElo: startElo.value,
@@ -134,7 +152,27 @@ function linkLichess(): void {
     password: password.value,
   }
   sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
+}
+
+function linkLichess(): void {
+  saveDraft('lichess')
   lichessAuth.startLinkFlow()
+}
+
+async function continueWithGoogle(): Promise<void> {
+  errorMessage.value = null
+  emailError.value = null
+  saveDraft('google')
+  isSubmitting.value = true
+  const result = await authStore.signInWithGoogle()
+  // Only reached when the redirect never happened — otherwise the page is gone.
+  isSubmitting.value = false
+  if (result.error) {
+    sessionStorage.removeItem(DRAFT_STORAGE_KEY)
+    errorMessage.value = result.serverUnreachable
+      ? t((s) => s.setup.errorServerUnreachable)
+      : result.error
+  }
 }
 
 function selectMode(next: SetupMode): void {
@@ -217,8 +255,56 @@ function goToLichessStep(): void {
   step.value = 'lichess'
 }
 
+// The account step only exists to create an account — a Google user already has
+// one, so for them the wizard ends after the (optional) Lichess link instead.
 function goToAccountStep(): void {
+  if (needsOAuthOnboarding.value) {
+    void completeOAuthOnboarding()
+    return
+  }
   step.value = 'account'
+}
+
+// Set when the redirect back from Google found a cloud profile that has never
+// been onboarded (see sync.ts) — the wizard then collects exactly what an email
+// signup would have passed as metadata, and nothing else.
+const needsOAuthOnboarding = ref(false)
+
+watch(
+  () => syncStore.oauthOnboardingRequired,
+  (required) => {
+    if (!required) return
+    needsOAuthOnboarding.value = true
+    mode.value = 'new'
+    // Coming back from the account step, the draft this tab wrote on its way out
+    // already carries both answers — re-asking for them would be pure friction.
+    // Any other draft is stale and must not stand in for the user's answers.
+    if (returnedFromGoogleRedirect && username.value.trim()) {
+      void completeOAuthOnboarding()
+      return
+    }
+    step.value = 'basics'
+  },
+  { immediate: true },
+)
+
+async function completeOAuthOnboarding(): Promise<void> {
+  errorMessage.value = null
+  isSubmitting.value = true
+  const result = await authStore.initializeOAuthProfile(username.value.trim(), startElo.value)
+  if (result.error) {
+    isSubmitting.value = false
+    errorMessage.value = t((s) => s.setup.errorSignupFailed)
+    return
+  }
+  // Clears the guard before the pull, so the row — no longer null-username — takes
+  // the normal "cloud wins" path and hydrates the local profile.
+  syncStore.oauthOnboardingRequired = false
+  await syncStore.pullRemoteState()
+  isSubmitting.value = false
+  needsOAuthOnboarding.value = false
+  lichessAuth.applyPendingUsernameToProfile()
+  showWelcomePage()
 }
 
 function backToAccount(): void {
@@ -442,6 +528,10 @@ async function submitSignIn(): Promise<void> {
           <button type="submit" class="btn-submit" :disabled="isSubmitting">
             {{ isSubmitting ? t((s) => s.setup.signingIn) : t((s) => s.setup.signInButton) }}
           </button>
+          <div class="auth-divider">
+            <span>{{ t((s) => s.common.or) }}</span>
+          </div>
+          <GoogleSignInButton :disabled="isSubmitting" @click="continueWithGoogle" />
         </div>
       </form>
 
@@ -619,6 +709,10 @@ async function submitSignIn(): Promise<void> {
           >
             {{ t((s) => s.setup.continueWithoutAccount) }}
           </button>
+          <div class="auth-divider">
+            <span>{{ t((s) => s.common.or) }}</span>
+          </div>
+          <GoogleSignInButton :disabled="isSubmitting" @click="continueWithGoogle" />
         </div>
       </form>
 
@@ -736,6 +830,24 @@ h2 {
   margin: 0 0 1.5rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 
 .mode-tabs {

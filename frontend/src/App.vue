@@ -86,7 +86,10 @@ onMounted(async () => {
   // useLichessAuth's startLinkFlow), so any puzzle fen is already gone by the time we come
   // back — only the pathname (which view to return to) survives the round trip to Lichess.
   // The training state itself comes back via the pagehide session snapshot instead.
-  if (new URLSearchParams(window.location.search).has('code')) {
+  // Google login comes back to this same origin with a `?code=` of its own, which
+  // supabase-js consumes inside authStore.init() — only take the parameter when the
+  // Lichess flow is the one that put it there (see hasPendingLinkFlow).
+  if (lichessAuth.hasPendingLinkFlow()) {
     await lichessAuth.handleRedirectCallback()
   }
 

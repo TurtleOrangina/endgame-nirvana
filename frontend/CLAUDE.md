@@ -21,7 +21,7 @@ never blocking the UI. `src/lib/supabaseClient.ts` exports `null` when
 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` aren't set (see `.env.example`),
 so a no-backend build keeps working exactly as before.
 
-- `src/stores/auth.ts` — Supabase Auth session state, sign up/in/out, pending-registration
+- `src/stores/auth.ts` — Supabase Auth session state, sign up/in/out, **Google OAuth sign-in**, pending-registration
   retry (email/username/startElo only — never the password), and the `PASSWORD_RECOVERY`
   event. `authStore.init()` is deliberately _not_ awaited by `App.vue`'s `onMounted` —
   with an expired access token it refreshes over the network inside `getSession()`,
@@ -29,6 +29,18 @@ so a no-backend build keeps working exactly as before.
   behind it. The cloud pull it triggers merges into the stores whenever it lands; the
   password-recovery token is read from the URL synchronously before `init()`'s first
   await, since routing rewrites the URL without waiting for it.
+- **Google sign-in** (`signInWithGoogle`) redirects the whole page away and back to the app's
+  origin, where supabase-js exchanges the `?code=`. Two consequences worth knowing:
+  - The **Lichess link flow uses `?code=` on the same origin**. They're told apart by
+    `useLichessAuth.hasPendingLinkFlow()` (its PKCE verifier in `sessionStorage`) — without
+    that guard, `handleRedirectCallback` strips the query string and destroys Google's code.
+  - Google passes **no signup metadata**, so `handle_new_user` creates the profile row with a
+    null username (see `backend/CLAUDE.md`). `pullRemoteState` therefore _claims_ such a row
+    instead of applying it: an existing local profile is adopted via `initialize_oauth_profile`
+    (so upgrading a local-only user to a cloud account keeps their nickname and Elo), and a
+    first-time user sets `oauthOnboardingRequired`, which sends `SetupModal` to its `basics`
+    step. Applying a null-username row through the normal "cloud wins" merge would blank out
+    a real local profile.
 - `src/stores/sync.ts` — the write-behind outbox: batches `PendingAttempt[]` and a
   `profileDirty` flag into at most two requests (one `record_attempts` RPC, one `profiles`
   update) per 2s debounce window, flushing also on reconnect, tab-hide, and login.
@@ -112,6 +124,9 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
 - `src/components/SetupModal.vue` — first-run profile creation (username + starting Elo),
   with a mode toggle for creating/signing into a Supabase account (only shown when a
   backend is configured) alongside the default local-only flow.
+- `src/components/GoogleSignInButton.vue` — the shared "Continue with Google" button (used by
+  `SetupModal` and `SettingsPage`). The Google mark is an inline SVG, never a Google-hosted
+  image: the app must work offline, and a remote logo would ping Google on every render.
 - `src/components/PasswordRecoveryModal.vue` — shown on the `PASSWORD_RECOVERY` auth event.
 - `src/pages/SolveProgressPage.vue` — Elo stats, category progress, and a replayable
   history of recent attempts.

@@ -52,7 +52,7 @@ export type Database = {
           puzzles_solved: number
           settings: Json
           updated_at: string
-          username: string
+          username: string | null
         }
         Insert: {
           endgame_elo: number
@@ -61,7 +61,7 @@ export type Database = {
           puzzles_solved?: number
           settings?: Json
           updated_at?: string
-          username: string
+          username?: string | null
         }
         Update: {
           endgame_elo?: number
@@ -70,7 +70,7 @@ export type Database = {
           puzzles_solved?: number
           settings?: Json
           updated_at?: string
-          username?: string
+          username?: string | null
         }
         Relationships: []
       }
@@ -114,6 +114,10 @@ export type Database = {
     Functions: {
       delete_own_account: { Args: never; Returns: undefined }
       export_puzzles: { Args: never; Returns: Json }
+      initialize_oauth_profile: {
+        Args: { p_start_elo: number; p_username: string }
+        Returns: undefined
+      }
       prune_puzzles: { Args: { p_keep_ids: Json }; Returns: number }
       pull_state: { Args: never; Returns: Json }
       record_attempts: { Args: { p_attempts: Json }; Returns: Json }

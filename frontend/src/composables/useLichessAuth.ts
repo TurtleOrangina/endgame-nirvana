@@ -65,16 +65,26 @@ async function startLinkFlow(): Promise<void> {
   window.location.href = `${LICHESS_OAUTH_URL}?${params.toString()}`
 }
 
+// Whether a `?code=` on the current URL belongs to *this* flow. Supabase's Google
+// login redirects back to the same origin with the same parameter name, and its
+// PKCE exchange needs the code left intact — so the stored verifier, written only
+// by startLinkFlow, is what tells the two apart.
+function hasPendingLinkFlow(): boolean {
+  return sessionStorage.getItem('lichess_code_verifier') !== null
+}
+
 async function handleRedirectCallback(): Promise<void> {
   const params = new URLSearchParams(window.location.search)
   const code = params.get('code')
   if (!code) return
 
-  history.replaceState({}, '', window.location.pathname)
-
+  // Read before stripping the URL: bailing out after the replaceState would
+  // consume a code that belongs to the Supabase OAuth flow.
   const verifier = sessionStorage.getItem('lichess_code_verifier')
   if (!verifier) return
   sessionStorage.removeItem('lichess_code_verifier')
+
+  history.replaceState({}, '', window.location.pathname)
 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
@@ -130,6 +140,7 @@ export function useLichessAuth() {
     token,
     lichessUsername,
     startLinkFlow,
+    hasPendingLinkFlow,
     handleRedirectCallback,
     unlinkAccount,
     clearPendingUsername,
