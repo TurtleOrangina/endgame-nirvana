@@ -1051,7 +1051,7 @@ defineExpose({
 
           <!-- Share -->
           <button
-            v-if="currentExercise && puzzleStatus !== PuzzleStatus.SOLVING"
+            v-if="currentExercise"
             class="btn-action btn-share"
             :title="t((s) => s.app.shareTitle)"
             @click="onShare"
