@@ -73,6 +73,12 @@ export interface MoveSelectionResult {
   scoreCP: number | null
   scoreMate: number | null
   tbData: TablebaseResult | null
+  // The engine line the sampled bestmove was taken from: the move the computer is about
+  // to play, followed by the user reply the engine predicts. Feeds the draw auto-solve,
+  // which needs to know what the next half-moves would look like before deciding the
+  // position is just being shuffled. Null when the move came from somewhere other than
+  // the engine's lines (a tablebase fallback, an injected zeroing move).
+  selectedLine: EngineLine | null
 }
 
 function uciToSan(fen: string, uci: string): string {
@@ -687,11 +693,18 @@ export function useMoveSelector() {
     const tbOutcome = tbState.outcome
     const tbData = tbOutcome?.result ?? null
     if (lines === null || lines.length === 0 || lines[0]!.moves.length === 0) {
-      return { bestmove: null, scoreCP: null, scoreMate: null, tbData }
+      return { bestmove: null, scoreCP: null, scoreMate: null, tbData, selectedLine: null }
     }
 
     const scoreCP = lines[0]!.scoreCP
     const scoreMate = lines[0]!.scoreMate
+    const selectionOf = (bestmove: string | null): MoveSelectionResult => ({
+      bestmove,
+      scoreCP,
+      scoreMate,
+      tbData,
+      selectedLine: lines.find((line) => line.moves[0] === bestmove) ?? null,
+    })
 
     if (options.isPremove) {
       const engineMove = lines[0]!.moves[0]!
@@ -704,9 +717,9 @@ export function useMoveSelector() {
         console.warn(
           `Premove reply ${engineMove} does not retain the outcome per tablebase, playing ${retainedMove} instead`,
         )
-        return { bestmove: retainedMove, scoreCP, scoreMate, tbData }
+        return selectionOf(retainedMove)
       }
-      return { bestmove: engineMove, scoreCP, scoreMate, tbData }
+      return selectionOf(engineMove)
     }
 
     // Filter the engine lines down to moves that keep the best achievable outcome —
@@ -723,12 +736,12 @@ export function useMoveSelector() {
           'Engine suggested no outcome-retaining moves, playing the top tablebase move',
           fallback,
         )
-        return { bestmove: fallback, scoreCP, scoreMate, tbData }
+        return selectionOf(fallback)
       }
     } else {
       const engineOutcome = scoreToOutcome(scoreCP, scoreMate)
       if (engineOutcome === null) {
-        return { bestmove: lines[0]!.moves[0]!, scoreCP, scoreMate, tbData }
+        return selectionOf(lines[0]!.moves[0]!)
       }
       outcomeWithBestUserPlay = engineOutcome
       candidates = lines.filter((l) => scoreToOutcome(l.scoreCP, l.scoreMate) === engineOutcome)
@@ -776,7 +789,7 @@ export function useMoveSelector() {
     // A won position is converted mercilessly with the strongest line — playing out a
     // lost position isn't training for the user
     if (candidates.length === 1 || outcomeWithBestUserPlay === 'win') {
-      return { bestmove: candidates[0]!.moves[0]!, scoreCP, scoreMate, tbData }
+      return selectionOf(candidates[0]!.moves[0]!)
     }
 
     const startingStableMaterialBalance = stableMaterialBalance(
@@ -814,7 +827,7 @@ export function useMoveSelector() {
     )
 
     const chosen = candidates[chosenIndex]!
-    return { bestmove: chosen.moves[0]!, scoreCP, scoreMate, tbData }
+    return selectionOf(chosen.moves[0]!)
   }
 
   return { getBestMove }

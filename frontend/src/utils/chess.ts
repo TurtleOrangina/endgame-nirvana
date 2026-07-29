@@ -84,6 +84,15 @@ export function isBareKingVsMajorPiece(fen: string, playerColor: PlayerColor): b
   return opponentIsBareKing && playerHasMajorPiece
 }
 
+// True for the two symmetric major-piece endgames that are dead drawn by themselves:
+// king and rook against king and rook, or king and queen against king and queen.
+export function isMirroredMajorPieceEndgame(fen: string): boolean {
+  const { white, black } = piecesByColor(fen)
+  const asSortedString = (pieces: string[]): string => [...pieces].sort().join('')
+  const side = asSortedString(white)
+  return side === asSortedString(black) && (side === 'kr' || side === 'kq')
+}
+
 export function uciLineToPretty(fen: string, uciMoves: string[]): string[] {
   // Normalize fullmove number to 1 so every puzzle line starts at move 1
   const parts = fen.split(' ')
