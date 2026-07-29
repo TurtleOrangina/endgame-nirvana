@@ -240,6 +240,10 @@ function boardFen(fen: string): string {
   return fen.split(' ')[0] ?? fen
 }
 
+function fenTurnColor(fen: string): PlayerColor {
+  return fen.split(' ')[1] === 'b' ? 'black' : 'white'
+}
+
 function buildDests(ch: Chess): Map<Key, Key[]> {
   const dests = new Map<Key, Key[]>()
   for (const move of ch.moves({ verbose: true })) {
@@ -669,8 +673,13 @@ function endGame(result: GameResult): void {
 // (not a rated attempt), the player is allowed to play a different move than they
 // originally did, provided it's genuinely their move at that position (never the
 // computer's), branching the history from there.
+// Read from the displayed entry rather than from `chess`, which is deliberately left
+// pointing at the previous position while a non-resumable entry is on screen (see
+// showHistoryPosition) and would otherwise report on a position nobody is looking at.
 function canResumeFromHistory(): boolean {
-  return !!chess && !props.isRatedAttempt && toColor(chess.turn()) === playerColor
+  const fen = historyEntries.value[historyIndex.value]?.fen
+  if (!fen) return false
+  return !props.isRatedAttempt && fenTurnColor(fen) === playerColor
 }
 
 // When stepping back, the move being undone is the one recorded on the entry we're
@@ -711,10 +720,8 @@ function showHistoryPosition(undoneEntry?: HistoryEntry, playSound = true): void
           : { color: playerColor, free: false, dests: buildDests(chess) },
       })
     } else {
-      const historyChess = new Chess(entry.fen)
-      const canResumeHere = !props.isRatedAttempt && toColor(historyChess.turn()) === playerColor
-      if (canResumeHere) {
-        chess = historyChess
+      if (canResumeFromHistory()) {
+        chess = new Chess(entry.fen)
         setCgState({
           fen: boardFen(entry.fen),
           lastMove: entry.lastMove,
@@ -1267,7 +1274,13 @@ const canPlayBestMove = computed(() => {
   // Game-over/history-position checks don't apply in analysis mode — there, moving is
   // always allowed regardless of how the underlying game (pre-analysis) ended.
   if (isAnalysisMode.value) return !!(bestTablebaseMoveUci.value ?? bestEngineMoveUci.value)
-  if (isGameOver.value || isViewingHistory()) return false
+  // While browsing history the button follows the board: enabled exactly where a piece
+  // could also be dragged, i.e. at a position the player is to move in — playing from
+  // there branches the history off, just as playing the move by hand would. isGameOver
+  // is irrelevant then, since the displayed position is the one being resumed, not the
+  // finished one.
+  if (isViewingHistory()) return canResumeFromHistory()
+  if (isGameOver.value) return false
   return !isWaitingForEngineReply.value
 })
 

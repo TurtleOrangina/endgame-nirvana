@@ -63,6 +63,15 @@ watch(profile, (p) => {
   if (!p) setupWizardOpen.value = true
 })
 
+// Someone who followed a shared puzzle link without having a profile yet: they get to play
+// that one puzzle instead of being met by the setup wizard, since demanding an account
+// before showing the position is a poor first impression when all they wanted was a look.
+// Only true for a link that actually names a puzzle — landing on the app itself with no
+// profile still opens the wizard, or nobody would ever create one. Set once at startup, so
+// it can't flip mid-session when the cloud pull lands; creating a profile ends guest mode.
+const arrivedOnSharedPuzzle = ref(false)
+const isGuest = computed(() => arrivedOnSharedPuzzle.value && !profile.value)
+
 onMounted(async () => {
   const legalPage = matchLegalRoute(window.location.pathname)
   if (legalPage) {
@@ -80,7 +89,13 @@ onMounted(async () => {
   void authStore.init()
   syncStore.setUpAutoFlushListeners()
   userProfileStore.load()
-  if (!profile.value) setupWizardOpen.value = true
+  // Read straight from the URL rather than from the parsed route below, which only runs
+  // after the Lichess callback has rewritten it — a `?code=` return carries no puzzle
+  // anyway (see startLinkFlow), so it correctly counts as a plain visit.
+  if (!profile.value) {
+    if (parseCurrentRoute().fen) arrivedOnSharedPuzzle.value = true
+    else setupWizardOpen.value = true
+  }
 
   // The OAuth redirect_uri deliberately omits the original query string (see
   // useLichessAuth's startLinkFlow), so any puzzle fen is already gone by the time we come
@@ -274,7 +289,9 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
         :versus-pieces="titleVersusPieces"
         :active-view="headerActiveView"
         :username="profile?.username ?? null"
+        :is-guest="isGuest"
         @navigate="navigateToView"
+        @request-setup="setupWizardOpen = true"
       />
 
       <SolveProgressPage
@@ -300,6 +317,8 @@ function handleLoadPuzzle(payload: { exerciseId: string; transformCode: string }
         ref="trainingPage"
         :active="currentView === 'training'"
         :suppress-board-intro="setupWizardOpen"
+        :is-guest="isGuest"
+        @request-setup="setupWizardOpen = true"
       />
     </div>
   </div>

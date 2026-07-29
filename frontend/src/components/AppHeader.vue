@@ -14,10 +14,15 @@ const props = defineProps<{
   versusPieces?: { player: SidePieces; opponent: SidePieces } | null
   activeView: NavView
   username: string | null
+  // Someone viewing a shared puzzle without a profile (see App.vue): the navigation menu
+  // would only lead to pages about a profile they don't have, so its place is taken by a
+  // button that offers to create one.
+  isGuest: boolean
 }>()
 
 const emit = defineEmits<{
   navigate: [view: NavView]
+  requestSetup: []
 }>()
 
 const { t } = useLocale()
@@ -176,7 +181,31 @@ watch(
       </span>
     </div>
 
-    <details v-if="username" ref="dropdownRef" class="dropdown" @toggle="onMenuToggle">
+    <button
+      v-if="isGuest"
+      class="btn-profile-nav btn-guest"
+      :title="t((s) => s.app.guestTitle)"
+      @click="emit('requestSetup')"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+        />
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+      </svg>
+      {{ t((s) => s.app.guest) }}
+    </button>
+
+    <details v-else-if="username" ref="dropdownRef" class="dropdown" @toggle="onMenuToggle">
       <summary class="btn-profile-nav">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -370,6 +399,12 @@ watch(
     border-color 0.1s,
     color 0.1s;
   white-space: nowrap;
+}
+
+.btn-guest {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
 }
 
 /* Lifted above the backdrop while open, so the menu itself — and the button that closes

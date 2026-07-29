@@ -35,6 +35,15 @@ const props = defineProps<{
   active: boolean
   // Suppresses ChessBoard's intro text while the first-run setup wizard covers the board.
   suppressBoardIntro: boolean
+  // A profile-less visitor who arrived on a shared puzzle link (see App.vue): they may
+  // solve, retry and analyse the one puzzle they were linked to, but everything that
+  // belongs to a profile — rating, session, categories, sharing — stays hidden, and
+  // anything that would navigate to another puzzle asks them to create a profile first.
+  isGuest: boolean
+}>()
+
+const emit = defineEmits<{
+  requestSetup: []
 }>()
 
 const store = useExercisesStore()
@@ -352,7 +361,7 @@ const engineStatusText = computed(() => {
 // Shown as the app header's title while the training view is the active page.
 const headerTitle = computed(() => {
   if (isAnalysisMode.value) return t((s) => s.app.analysisTitle)
-  if (profile.value && currentExercise.value) {
+  if (currentExercise.value) {
     const turn = currentBoardFen.value?.split(' ')[1] ?? 'w'
     return turn === 'w' ? t((s) => s.app.youPlayWhite) : t((s) => s.app.youPlayBlack)
   }
@@ -367,7 +376,7 @@ const headerVersusPieces = computed<{
   opponent: { color: 'white' | 'black'; pieces: PieceName[] }
 } | null>(() => {
   if (isAnalysisMode.value) return null
-  if (!profile.value || !currentExercise.value) return null
+  if (!currentExercise.value) return null
   const fen = currentBoardFen.value
   if (!fen) return null
   const playerColor = (fen.split(' ')[1] ?? 'w') === 'w' ? 'white' : 'black'
@@ -454,9 +463,23 @@ function onRetry(): void {
   boardRef.value?.resetBoard()
 }
 
+// Deliberately still offered to a guest, so they can see what training past this one
+// puzzle would look like — it just asks them to create a profile instead of moving on.
 function onNext(): void {
+  if (props.isGuest) {
+    emit('requestSetup')
+    return
+  }
   history.pushState(null, '', window.location.href)
   hideWrongSolutionFlash()
+  store.advanceToNext()
+}
+
+function onPickRandomPuzzle(): void {
+  if (props.isGuest) {
+    emit('requestSetup')
+    return
+  }
   store.advanceToNext()
 }
 
@@ -820,7 +843,7 @@ defineExpose({
 
               <button
                 class="btn-action btn-next"
-                :title="t((s) => s.app.nextTitle)"
+                :title="isGuest ? t((s) => s.app.nextTitleGuest) : t((s) => s.app.nextTitle)"
                 @click="onNext"
               >
                 <svg
@@ -879,7 +902,7 @@ defineExpose({
 
           <!-- Exercise meta chips -->
           <section
-            v-if="currentExercise && puzzleStatus !== PuzzleStatus.SOLVING"
+            v-if="currentExercise && puzzleStatus !== PuzzleStatus.SOLVING && !isGuest"
             class="exercise-meta"
           >
             <span
@@ -910,7 +933,7 @@ defineExpose({
           </section>
 
           <!-- Category filter -->
-          <section class="filters">
+          <section v-if="!isGuest" class="filters">
             <details ref="dropdownRef" class="dropdown">
               <summary>
                 {{ selectedCategoryLabel }}
@@ -1012,7 +1035,7 @@ defineExpose({
 
           <div v-if="requestedPuzzleNotFound" class="empty">
             <p>{{ t((s) => s.app.unknownPuzzle) }}</p>
-            <button class="btn-action" @click="store.advanceToNext()">
+            <button class="btn-action" @click="onPickRandomPuzzle">
               {{ t((s) => s.app.unknownPuzzleNext) }}
             </button>
           </div>
@@ -1079,7 +1102,7 @@ defineExpose({
 
           <!-- Share -->
           <button
-            v-if="currentExercise"
+            v-if="currentExercise && !isGuest"
             class="btn-action btn-share"
             :title="t((s) => s.app.shareTitle)"
             @click="onShare"
