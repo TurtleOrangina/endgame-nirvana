@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useUserProfileStore } from '@/stores/userProfile'
-import { applyTransformCode, pickRandomTransformCode } from '@/utils/fenTransform'
+import {
+  allTransformedFens,
+  applyTransformCode,
+  findTransformCode,
+  pickRandomTransformCode,
+} from '@/utils/fenTransform'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
 import { RECENT_ATTEMPT_EXCLUSION_MS } from '@/utils/attemptWindow'
 import type { Tables } from '@/types/database'
@@ -313,35 +318,42 @@ export const useExercisesStore = defineStore('exercises', () => {
   // back — see reselectAfterRemoteEloChange.
   const isCurrentExerciseExplicitlySelected = ref(false)
 
+  // Exercise ids are their (untransformed) fens, looked up on every puzzle selection and
+  // once per candidate transformation when resolving a fen from a URL — often enough over
+  // a catalog of thousands to be worth indexing rather than scanning.
+  const exercisesById = computed(
+    (): Map<string, Exercise> => new Map(allExercises.value.map((ex) => [ex.id, ex])),
+  )
+
   // Renders instantly from the localStorage cache if present (so the app works fully
   // offline after the first successful load and never blocks on a fetch), then always
   // fetches the static catalog in the background to pick up a newer export — cheap
   // since the manifest indirection means this is usually a fast, aggressively cached
   // network round trip rather than a real download (see fetchPuzzleCatalog).
   async function load(initialFen?: string): Promise<void> {
-    const requestedId = initialFen?.replaceAll('_', ' ') ?? null
+    const requestedFen = initialFen?.replaceAll('_', ' ') ?? null
     const cache = loadExercisesCache()
     if (cache) {
       allExercises.value = buildExercises(cache.puzzles)
       isLoading.value = false
-      selectInitial(requestedId)
-      void refreshExerciseCatalog(requestedId)
+      selectInitial(requestedFen)
+      void refreshExerciseCatalog(requestedFen)
       return
     }
 
-    await refreshExerciseCatalog(requestedId)
+    await refreshExerciseCatalog(requestedFen)
     isLoading.value = false
   }
 
-  function selectInitial(requestedId: string | null): void {
-    if (requestedId) {
-      requestedPuzzleNotFound.value = !selectById(requestedId)
+  function selectInitial(requestedFen: string | null): void {
+    if (requestedFen) {
+      requestedPuzzleNotFound.value = !selectByTransformedFen(requestedFen)
     } else {
       selectRandom()
     }
   }
 
-  async function refreshExerciseCatalog(requestedId: string | null = null): Promise<void> {
+  async function refreshExerciseCatalog(requestedFen: string | null = null): Promise<void> {
     const puzzles = await fetchPuzzleCatalog()
     if (!puzzles) return
 
@@ -350,8 +362,8 @@ export const useExercisesStore = defineStore('exercises', () => {
 
     if (currentExerciseId.value === null) {
       // Retry a not-yet-found requested puzzle against the fresh catalog before
-      // giving up on it; a still-unknown id keeps the "unknown puzzle" state.
-      if (requestedId && selectById(requestedId)) {
+      // giving up on it; a still-unknown fen keeps the "unknown puzzle" state.
+      if (requestedFen && selectByTransformedFen(requestedFen)) {
         requestedPuzzleNotFound.value = false
       } else if (!requestedPuzzleNotFound.value) {
         selectRandom()
@@ -576,7 +588,7 @@ export const useExercisesStore = defineStore('exercises', () => {
 
   const currentExercise = computed((): Exercise | null => {
     if (!currentExerciseId.value) return null
-    return allExercises.value.find((ex) => ex.id === currentExerciseId.value) ?? null
+    return exercisesById.value.get(currentExerciseId.value) ?? null
   })
 
   // The selected category's progress pool — see countsTowardProgress for why this is not
@@ -787,7 +799,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   }
 
   function exerciseById(id: string): Exercise | undefined {
-    return allExercises.value.find((ex) => ex.id === id)
+    return exercisesById.value.get(id)
   }
 
   // A puzzle id (its own history, a shared link, ...) that no longer resolves against the
@@ -803,29 +815,43 @@ export const useExercisesStore = defineStore('exercises', () => {
     initialPieceCount.value = null
   }
 
-  // Selects an exercise by id (its original fen) and rolls a fresh random
-  // transformation for it. Returns false if no such exercise exists.
-  function selectById(id: string): boolean {
-    const exercise = allExercises.value.find((ex) => ex.id === id)
-    if (!exercise) {
+  // Recovers the puzzle a *transformed* fen belongs to — the form fens take in URLs, so
+  // that everyone following a shared link sees the very same board (see currentUrlFen in
+  // TrainingPage). Puzzle identity is the untransformed fen, which is recovered by
+  // undoing each candidate transformation in turn until one lands on a known puzzle; no
+  // stored mapping of transformed fens is needed. Also resolves an untransformed fen (as
+  // links shared before this scheme carry), which comes back with the identity code.
+  // A handful of catalog puzzles are mirror images of each other, so a transformed fen can
+  // match two of them; the untransformed candidate is tried first, which keeps a puzzle's
+  // own fen resolving to itself and makes the tie-break deterministic either way.
+  function resolveTransformedFen(
+    fen: string,
+  ): { exerciseId: string; transformCode: string } | null {
+    for (const candidateOriginal of allTransformedFens(fen)) {
+      if (!exercisesById.value.has(candidateOriginal)) continue
+      const code = findTransformCode(candidateOriginal, fen)
+      if (code === null) continue
+      return { exerciseId: candidateOriginal, transformCode: code }
+    }
+    return null
+  }
+
+  // Selects the puzzle a URL fen stands for, shown in exactly the orientation that fen
+  // asks for rather than a freshly rolled one. Returns false if it matches no puzzle.
+  function selectByTransformedFen(fen: string): boolean {
+    const resolved = resolveTransformedFen(fen)
+    if (!resolved) {
       selectNotFound()
       return false
     }
-    requestedPuzzleNotFound.value = false
-    isCurrentExerciseExplicitlySelected.value = true
-    const code = pickRandomTransformCode(exercise.fen)
-    currentTransformCode.value = code
-    currentTransformedFen.value = applyTransformCode(exercise.fen, code)
-    currentExerciseId.value = id
-    initialPieceCount.value = countPiecesInFen(exercise.fen)
-    return true
+    return selectByIdWithTransform(resolved.exerciseId, resolved.transformCode)
   }
 
   // Selects an exercise by id and applies a specific, already-known transform
   // code rather than rolling a new one — used to replay a puzzle exactly as it
   // appeared in the user's history. Returns false if no such exercise exists.
   function selectByIdWithTransform(id: string, code: string): boolean {
-    const exercise = allExercises.value.find((ex) => ex.id === id)
+    const exercise = exercisesById.value.get(id)
     if (!exercise) {
       selectNotFound()
       return false
@@ -919,7 +945,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     hasSolvedRecently,
     recentAttemptStatus,
     exerciseById,
-    selectById,
+    selectByTransformedFen,
     selectByIdWithTransform,
     advanceToNext,
     previewExerciseForElo,

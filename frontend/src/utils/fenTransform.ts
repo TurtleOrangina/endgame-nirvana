@@ -165,6 +165,33 @@ export function applyTransformCode(fen: string, code: string): string {
   return result
 }
 
+const TRANSFORM_LETTERS = ['X', 'Y', 'R', 'L', 'C']
+
+// Every letter combination applyTransformCode understands, in canonical letter order.
+// The empty (identity) code comes first, so a search over these prefers leaving the
+// position as it is over any transformation that happens to produce the same board.
+const ALL_TRANSFORM_CODES: string[] = Array.from(
+  { length: 2 ** TRANSFORM_LETTERS.length },
+  (_unused, mask) => TRANSFORM_LETTERS.filter((_letter, i) => (mask & (1 << i)) !== 0).join(''),
+)
+
+// The code that turns `fromFen` into `toFen`, or null when no combination of transforms
+// does. Since the transforms form a group — every one of them has an inverse that is
+// itself reachable by some code, whichever letters the position's pawns and castling
+// rights allow — this doubles as the inverse lookup: the code taking a transformed fen
+// back to the original is just findTransformCode(transformed, original). Several codes
+// can produce the same board (e.g. 'YRL' and 'X'); the first match wins, which makes the
+// answer stable across calls.
+export function findTransformCode(fromFen: string, toFen: string): string | null {
+  return ALL_TRANSFORM_CODES.find((code) => applyTransformCode(fromFen, code) === toFen) ?? null
+}
+
+// Every fen reachable from `fen` by some transform code, i.e. all the ways the same
+// position can appear on the board. Deduplicated, and always includes `fen` itself.
+export function allTransformedFens(fen: string): string[] {
+  return [...new Set(ALL_TRANSFORM_CODES.map((code) => applyTransformCode(fen, code)))]
+}
+
 // Picks a random transform code for `fen`, flipping an independent 50/50 coin
 // for each of X, Y, R, L, C (skipping any that aren't legal for this position).
 // Legality is computed once from the original fen, since none of these ops

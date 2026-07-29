@@ -10,6 +10,7 @@ import { buildRouteUrl, type AppView } from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { playerPiecesSortedByValue, type PieceName } from '@/utils/chess'
+import { applyTransformCode } from '@/utils/fenTransform'
 import {
   clearTrainingSnapshot,
   saveTrainingSnapshot,
@@ -84,21 +85,23 @@ const categoryCountColumnWidth = computed(() => `${String(overallProgress.value.
 const currentBoardFen = computed(
   () => currentTransformedFen.value ?? currentExercise.value?.fen ?? null,
 )
-// The FEN used in URLs — always the puzzle's original fen, with underscores for the
-// URL, regardless of which transformation is currently displayed. This is what lets
-// a fresh page load (in a new tab, without a session snapshot to restore — see
-// restoreSavedTrainingState) re-roll a random orientation while the URL stays stable.
-const currentRawFen = computed(() => currentExercise.value?.fen.replaceAll(' ', '_') ?? null)
+// The FEN used in URLs — the *transformed* fen currently on the board, with underscores
+// for the URL. Sharing the original instead would leave the recipient's app free to roll
+// its own orientation, so the two people would be looking at mirrored/recolored boards
+// and couldn't discuss a move by name. The puzzle behind such a URL is recovered by
+// undoing the transformation (see the exercises store's resolveTransformedFen), since
+// solves are still reported under the original fen.
+const currentUrlFen = computed(() => currentBoardFen.value?.replaceAll(' ', '_') ?? null)
 const shareUrl = computed(() =>
-  currentRawFen.value
-    ? `${window.location.origin}${buildRouteUrl('training', currentRawFen.value)}`
+  currentUrlFen.value
+    ? `${window.location.origin}${buildRouteUrl('training', currentUrlFen.value)}`
     : null,
 )
 
 // The URL this view currently stands for — the training page owns the /train and
 // /analysis routes, so App.vue navigates back to it through this.
 const currentRouteUrl = computed(() =>
-  buildRouteUrl(isAnalysisMode.value ? 'analysis' : 'training', currentRawFen.value),
+  buildRouteUrl(isAnalysisMode.value ? 'analysis' : 'training', currentUrlFen.value),
 )
 
 const puzzleStatus = ref<PuzzleStatus>(PuzzleStatus.SOLVING)
@@ -173,7 +176,7 @@ watch(
     isAnalysisMode.value = false
     clearAnalysisResults()
     if (!suppressUrlUpdate) {
-      history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
+      history.replaceState(null, '', buildRouteUrl('training', currentUrlFen.value))
     }
   },
   { flush: 'sync' },
@@ -216,14 +219,18 @@ onUnmounted(() => {
 
 // Restores the training page "as you left it" from the pagehide snapshot: same puzzle in
 // the same orientation, same move history, same rated/retry status and analysis mode.
-// A ?puzzle= URL for a *different* puzzle (e.g. a shared link pasted into this tab) wins
-// over the snapshot. Returns whether the snapshot was applied.
+// A ?puzzle= URL showing a *different* position (another puzzle, or the same one in
+// another orientation — e.g. a shared link pasted into this tab) wins over the snapshot,
+// since that URL is the position the user asked to see. Returns whether the snapshot was
+// applied.
 async function restoreSavedTrainingState(requestedFen: string | null = null): Promise<boolean> {
   const snapshot = takeTrainingSnapshot()
   if (!snapshot) return false
-  const requestedId = requestedFen?.replaceAll('_', ' ') ?? null
-  if (requestedId && requestedId !== snapshot.exerciseId) return false
   if (!store.exerciseById(snapshot.exerciseId)) return false
+  if (requestedFen) {
+    const snapshotFen = applyTransformCode(snapshot.exerciseId, snapshot.transformCode)
+    if (requestedFen.replaceAll('_', ' ') !== snapshotFen) return false
+  }
 
   store.selectByIdWithTransform(snapshot.exerciseId, snapshot.transformCode)
   puzzleStatus.value = snapshot.puzzleStatus
@@ -281,7 +288,7 @@ function enterAnalysisFromRoute(): void {
       startAnalysisMode()
     }).catch(() => undefined)
   } else {
-    history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
+    history.replaceState(null, '', buildRouteUrl('training', currentUrlFen.value))
   }
 }
 
@@ -290,10 +297,10 @@ function enterAnalysisFromRoute(): void {
 function applyRoute(route: { view: AppView; fen: string | null }): void {
   suppressUrlUpdate = true
   const wantsAnalysis = route.view === 'analysis'
-  const exerciseChanged = route.fen && route.fen !== currentRawFen.value
+  const positionChanged = route.fen && route.fen !== currentUrlFen.value
 
-  if (exerciseChanged && route.fen) {
-    store.selectById(route.fen.replaceAll('_', ' '))
+  if (positionChanged && route.fen) {
+    store.selectByTransformedFen(route.fen.replaceAll('_', ' '))
     // sync watcher has already reset isAnalysisMode to false
     if (wantsAnalysis) enterAnalysisFromRoute()
   } else if (wantsAnalysis && !isAnalysisMode.value) {
@@ -498,7 +505,7 @@ function onAnalyse(): void {
   }
   isAnalysisMode.value = true
   startAnalysisMode()
-  history.pushState(null, '', buildRouteUrl('analysis', currentRawFen.value))
+  history.pushState(null, '', buildRouteUrl('analysis', currentUrlFen.value))
 }
 
 const linkCopied = ref(false)
@@ -532,7 +539,7 @@ function onLeaveAnalysis(): void {
   puzzleStatus.value = PuzzleStatus.FAILED
   clearAnalysisResults()
   boardRef.value?.leaveAnalysisMode()
-  history.replaceState(null, '', buildRouteUrl('training', currentRawFen.value))
+  history.replaceState(null, '', buildRouteUrl('training', currentUrlFen.value))
 }
 
 function onToggleEngine(): void {

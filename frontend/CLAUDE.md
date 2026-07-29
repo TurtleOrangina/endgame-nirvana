@@ -60,7 +60,12 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
   was a flagged-for-review default, not a hard requirement.
 - Puzzle identity is the **normalized FEN** (see `src/utils/exerciseId.ts`) — not a
   category path, so exercise ids survive the puzzle being moved between categories
-  in a future re-scrape.
+  in a future re-scrape. **URLs (`/train?puzzle=…`, and therefore shared links) carry the
+  _transformed_ fen** currently on the board instead, so both people looking at a shared
+  link see the same orientation and colours and can talk about the same moves. The puzzle
+  behind such a fen is recovered by undoing each candidate transformation until one hits a
+  known id (`exercises.ts`'s `resolveTransformedFen`), so attempts are still reported under
+  the original fen and no transformed-fen lookup table is needed.
 - The puzzle catalog itself (`src/stores/exercises.ts`) is a **static frontend asset**
   (`public/exercises.json`, not committed — see `.gitignore`), not downloaded from the
   backend: the `public.puzzles` table has no client read access at all (see

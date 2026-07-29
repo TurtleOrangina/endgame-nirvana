@@ -26,7 +26,7 @@ export const de: typeof en = {
     retry: 'Nochmal',
     retryTitle: 'Aufgabe erneut versuchen',
     next: 'Weiter',
-    nextTitle: 'Nächste Aufgabe (Tastenkürzel: N)',
+    nextTitle: 'Nächste Aufgabe (N)',
     wrongSolution: 'Falsche Lösung!',
     analyse: 'Analysieren',
     share: 'Aufgabe teilen',
