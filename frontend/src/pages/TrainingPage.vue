@@ -9,6 +9,7 @@ import { useResultAudio } from '@/composables/useResultAudio'
 import { buildRouteUrl, type AppView } from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
 import { useWakeLock } from '@/composables/useWakeLock'
+import { useHideItemsUntilPageFits } from '@/composables/useHideItemsUntilPageFits'
 import { playerPiecesSortedByValue, type PieceName } from '@/utils/chess'
 import { applyTransformCode } from '@/utils/fenTransform'
 import {
@@ -76,6 +77,17 @@ const dropdownRef = ref<HTMLDetailsElement | null>(null)
 // Keeps the screen awake while actually solving a puzzle, since puzzles can take a
 // while to think through with no touch/scroll to reset the OS's dim timer.
 useWakeLock(computed(() => props.active))
+
+// On a short screen (phones, mostly) the board plus everything under it doesn't fit, and
+// the page starts scrolling — which is awkward while dragging pieces. Drop the least
+// important sidebar items, least important first, until it fits again.
+const { hiddenItemCount } = useHideItemsUntilPageFits(
+  3,
+  computed(() => props.active),
+)
+const isCategoryProgressHidden = computed(() => hiddenItemCount.value >= 1)
+const isSessionStatHidden = computed(() => hiddenItemCount.value >= 2)
+const areExerciseChipsHidden = computed(() => hiddenItemCount.value >= 3)
 
 // Chessground caches its pixel bounds, and the window may be resized while the training
 // view is hidden — re-measure whenever it becomes visible again.
@@ -882,7 +894,7 @@ defineExpose({
                 {{ eloChangeLabel }}
               </span>
             </div>
-            <div class="stat-row">
+            <div v-if="!isSessionStatHidden" class="stat-row">
               <span class="stat-label">{{ t((s) => s.app.session) }}</span>
               <span class="stat-solved">
                 {{ t((s) => s.app.solvedCount, { count: sessionSolved }) }}
@@ -902,7 +914,12 @@ defineExpose({
 
           <!-- Exercise meta chips -->
           <section
-            v-if="currentExercise && puzzleStatus !== PuzzleStatus.SOLVING && !isGuest"
+            v-if="
+              currentExercise &&
+              puzzleStatus !== PuzzleStatus.SOLVING &&
+              !isGuest &&
+              !areExerciseChipsHidden
+            "
             class="exercise-meta"
           >
             <span
@@ -1003,7 +1020,7 @@ defineExpose({
               </div>
             </details>
 
-            <div class="category-progress">
+            <div v-if="!isCategoryProgressHidden" class="category-progress">
               <div class="progress-track">
                 <div
                   v-if="categoryPuzzleSolved > 0"
