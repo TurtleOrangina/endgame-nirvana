@@ -12,7 +12,12 @@ import {
 import { useBoardAudio, type BoardSound } from '@/composables/useBoardAudio'
 import { useLichessTablebase } from '@/composables/useLichessTablebase'
 import { useLocale } from '@/composables/useLocale'
-import { useMoveSelector, type MoveSelectionResult } from '@/composables/useMoveSelector'
+import {
+  TEMPERATURE,
+  TEMPERATURE_PAWNLESS_RETRY,
+  useMoveSelector,
+  type MoveSelectionResult,
+} from '@/composables/useMoveSelector'
 import { evaluatePuzzleGoal } from '@/utils/puzzleEvaluation'
 import {
   hasPawnsOnBoard,
@@ -57,10 +62,6 @@ const PROMOTION_OPTIONS: {
   { piece: 'n', name: 'knight' },
   { piece: 'b', name: 'bishop' },
 ]
-
-const TEMPERATURE = 0.2 // the engine defends accurately
-// On pawnless retrys more variance is accepted, to see more variations
-const TEMPERATURE_PAWNLESS_RETRY = 0.6
 
 // User-drawn arrows/marked squares are coloured by the modifier keys held when the
 // right-click drag starts — every combination of Ctrl/Alt/Shift gets its own colour, see

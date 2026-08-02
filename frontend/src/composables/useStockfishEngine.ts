@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 import type { EngineLine } from '@/types'
+import { createUciSearchCollector } from '@/utils/uciSearchCollector'
 
 // Thinking-time budgets for every kind of engine search, kept together so their
 // relative sizes stay easy to compare.
@@ -128,9 +129,7 @@ function createEngine(): StockfishEngine {
   // before we can safely send the next position+go.
   let awaitingStopAck = false
   let pendingSearch: PendingSearch | null = null
-  let analysisLines: Map<number, EngineLine> = new Map()
-  let lastScoreCP: number | null = null
-  let lastScoreMate: number | null = null
+  const searchCollector = createUciSearchCollector()
 
   // Assigned once startEngine() runs; every usage below happens only after `isReady`
   // becomes true, which can't happen before that.
@@ -235,9 +234,7 @@ function createEngine(): StockfishEngine {
       appliedThreads = requestedThreads
     }
     isThinking.value = true
-    analysisLines = new Map()
-    lastScoreCP = null
-    lastScoreMate = null
+    searchCollector.reset()
     resolveAnalysis = ps.resolve
     onProgressCallback = ps.onProgress ?? null
     worker.postMessage(`setoption name MultiPV value ${ps.lines}`)
@@ -284,48 +281,8 @@ function createEngine(): StockfishEngine {
         // Ignore info lines while waiting for the stop acknowledgement —
         // they belong to the search we just aborted.
         if (!resolveAnalysis || awaitingStopAck) return
-        // Fail-high/fail-low re-search lines report a transient bound, not a real
-        // evaluation, and their truncated pv would clobber a complete earlier line
-        // at the same or lower depth.
-        if (/ score (cp|mate) -?\d+ (upper|lower)bound/.test(line)) return
-
-        const cpMatch = line.match(/score cp (-?\d+)/)
-        const mateMatch = line.match(/score mate (-?\d+)/)
-        const multipvMatch = line.match(/multipv (\d+)/)
-        const depthMatch = line.match(/depth (\d+)/)
-        const pvMatch = line.match(/ pv (.+)$/)
-
-        const lineScoreCP = cpMatch ? parseInt(cpMatch[1] ?? '0') : null
-        const lineScoreMate = mateMatch ? parseInt(mateMatch[1] ?? '0') : null
-
-        // Only the best line's score may become the position's evaluation — with
-        // MultiPV > 1 the later lines are deliberately worse moves, and letting them
-        // overwrite the score would misreport the position (e.g. a winning position
-        // looking drawn because the third-best move only keeps a small edge).
-        const isBestLine = !multipvMatch || multipvMatch[1] === '1'
-        if (isBestLine && (cpMatch || mateMatch)) {
-          lastScoreCP = lineScoreCP
-          lastScoreMate = lineScoreMate
-        }
-
-        if (multipvMatch && pvMatch) {
-          const multipvIndex = parseInt(multipvMatch[1] ?? '1')
-          const depth = depthMatch ? parseInt(depthMatch[1] ?? '0') : 0
-          const moves = pvMatch[1]?.trim().split(' ') ?? []
-          const existing = analysisLines.get(multipvIndex)
-          if (!existing || depth >= existing.depth) {
-            analysisLines.set(multipvIndex, {
-              moves,
-              scoreCP: lineScoreCP,
-              scoreMate: lineScoreMate,
-              depth,
-              multipvIndex,
-            })
-            onProgressCallback?.(
-              [...analysisLines.values()].sort((a, b) => a.multipvIndex - b.multipvIndex),
-            )
-          }
-        }
+        const updatedLines = searchCollector.consumeInfo(line)
+        if (updatedLines) onProgressCallback?.(updatedLines)
       } else if (line.startsWith('bestmove')) {
         if (awaitingStopAck) {
           // Engine has fully stopped — now safe to send new commands.
@@ -338,31 +295,12 @@ function createEngine(): StockfishEngine {
             isThinking.value = false
           }
         } else if (resolveAnalysis) {
-          let result = [...analysisLines.values()].sort((a, b) => a.multipvIndex - b.multipvIndex)
-          // Extremely fast trivial searches can in theory emit a bestmove without any
-          // pv info lines — synthesize a single line from the bestmove token so callers
-          // still get a move. `bestmove (none)` (terminal position) stays an empty result.
-          if (result.length === 0) {
-            const move = line.split(' ')[1]
-            if (move && move !== '(none)') {
-              result = [
-                {
-                  moves: [move],
-                  scoreCP: lastScoreCP,
-                  scoreMate: lastScoreMate,
-                  depth: 0,
-                  multipvIndex: 1,
-                },
-              ]
-            }
-          }
+          const result = searchCollector.finish(line)
           worker.postMessage('setoption name MultiPV value 1')
           resolveAnalysis(result)
           resolveAnalysis = null
           onProgressCallback = null
-          analysisLines = new Map()
-          lastScoreCP = null
-          lastScoreMate = null
+          searchCollector.reset()
           isThinking.value = false
         }
       }

@@ -13,6 +13,7 @@ import {
   PREMOVE_THINKING_TIME_MS,
   PROBE_THINKING_TIME_MS,
   useStockfishEngine,
+  type StockfishEngine,
 } from '@/composables/useStockfishEngine'
 import { useLichessTablebase, type OutcomeRetainingResult } from '@/composables/useLichessTablebase'
 import { scoreToOutcome } from '@/utils/puzzleEvaluation'
@@ -23,6 +24,13 @@ import {
   materialByColor,
   uciToMoveArgs,
 } from '@/utils/chess'
+
+// How sharply the sampling peaks on the highest-weighted candidates (see weightedSample).
+// Lives here rather than at the call site so the defensive-resistance measurement
+// (src/__tests__/defensive-resistance/) can drive the selector exactly as the board does.
+export const TEMPERATURE = 0.2 // the engine defends accurately
+// On pawnless retrys more variance is accepted, to see more variations
+export const TEMPERATURE_PAWNLESS_RETRY = 0.6
 
 const BESTMOVE_MULTIPV = 5
 // How many of the user's upcoming positions per line are probed for the Trickster pattern
@@ -104,8 +112,11 @@ interface CandidateSamplingPlan {
   describeCandidate: (index: number) => string
 }
 
-export function useMoveSelector() {
-  const engine = useStockfishEngine()
+// The engine is injectable so the defensive-resistance measurement
+// (src/measurements/defensive-resistance/) can drive this exact selection logic from
+// Node, where there is no Web Worker to run the WASM build in. The app always uses the
+// shared browser instance.
+export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) {
   const tablebase = useLichessTablebase()
 
   // Safety net: if the engine hangs (e.g. worker crash), resolve with null after a

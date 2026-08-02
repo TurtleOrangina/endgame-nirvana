@@ -12,7 +12,8 @@
     "lint": "run-s lint:*",
     "lint:oxlint": "vp lint . --fix",
     "lint:eslint": "vp lint . --fix",
-    "format": "vp fmt src/"
+    "format": "vp fmt src/",
+    "measure-defensive-resistance": "node scripts/measure-defensive-resistance.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.1",
@@ -36,10 +37,11 @@
     "vite": "catalog:",
     "vite-plugin-vue-devtools": "^8.1.5",
     "vite-plus": "catalog:",
+    "vitest": "^4.1.10",
     "vue-tsc": "^3.3.6"
   },
   "engines": {
     "node": "^20.19.0 || ^22.18.0 || >=24.11.0"
   },
-  "packageManager": "pnpm@11.18.0"
+  "packageManager": "pnpm@11.20.0"
 }

@@ -1,7 +1,10 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
   "include": ["env.d.ts", "src/**/*", "src/**/*.vue"],
-  "exclude": ["src/**/__tests__/*"],
+  // src/measurements/ is Node-side tooling with its own project (tsconfig.measurements.json).
+  // Tests are deliberately *not* excluded — `vue-tsc --build` is the only thing that
+  // type-checks them, and code that fails type checking is not ready to commit.
+  "exclude": ["src/measurements/**/*"],
   "compilerOptions": {
     // Extra safety for array and object lookups, but may have false positives.
     "noUncheckedIndexedAccess": true,

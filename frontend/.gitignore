@@ -44,3 +44,6 @@ __screenshots__/
 # Stockfish engine files (served from node_modules in dev, copied to dist at build time)
 public/engines/
 
+
+# Defensive-resistance measurement (src/measurements/defensive-resistance/)
+.tablebase-cache/

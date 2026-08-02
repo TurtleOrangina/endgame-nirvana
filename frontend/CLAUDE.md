@@ -234,6 +234,27 @@ A CLI wrapper around the bundled engine is available for ad-hoc position analysi
 (printf 'uci\nsetoption name MultiPV value 5\nposition fen 8/3k4/7p/2KP3P/8/8/8/8 b - - 3 2\ngo movetime 400\n'; sleep 1) | node scripts/stockfish-cli.mjs | tail -n 6
 ```
 
+## Measuring defensive resistance
+
+`src/measurements/defensive-resistance/` quantifies how much resistance `useMoveSelector`
+actually gives a perfect user, so the engine can be tuned without guessing. It plays
+puzzles out to mate — tablebase-optimal moves for the user, the real selection logic for
+the defender — and reports how much of the available distance-to-mate the defense gave
+up, overall and per move. See the README there; run it with
+`node scripts/measure-defensive-resistance.mjs`.
+
+It runs either as a Vitest suite (`RUN_RESISTANCE_MEASUREMENT=1 vp test --run
+defensiveResistance`, gated so a normal `vp test` skips it) or as the CLI script; both
+drive the same `measurementHarness.ts`.
+
+It is Node-side tooling that imports app modules, so it has its own TypeScript project
+(`tsconfig.measurements.json`, referenced from `tsconfig.json`) — `tsconfig.app.json`
+excludes it, since app code must not see Node's globals. Nothing in `src/` imports it,
+so it never reaches the bundle. Two seams in the app exist for it and should stay:
+`useMoveSelector(engine?)` takes an injectable engine (Node has no Web Worker to run the
+WASM build in), and `src/utils/uciSearchCollector.ts` holds the UCI `info`-line parsing
+shared by the WASM worker and the native binary.
+
 ## Architecture
 
 Vue 3 + TypeScript SPA. Entry point: `src/main.ts`. State management: Pinia (`src/stores/`). The `@` alias resolves to `src/`.

@@ -1,0 +1,13 @@
+// TSConfig for src/measurements/ — offline measurement tooling that imports the app's own
+// modules but runs under Node (see src/measurements/defensive-resistance/README.md).
+// It needs the DOM lib, because the app modules it drives are written against it, plus
+// Node's types, which tsconfig.app.json deliberately keeps out of the app's global scope.
+{
+  "extends": "./tsconfig.app.json",
+  "include": ["env.d.ts", "src/measurements/**/*"],
+  "exclude": [],
+  "compilerOptions": {
+    "types": ["node"],
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.measurements.tsbuildinfo"
+  }
+}
