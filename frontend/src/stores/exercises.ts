@@ -317,6 +317,10 @@ export const useExercisesStore = defineStore('exercises', () => {
   // session) rather than rolled at random. Such a puzzle is never swapped out behind the user's
   // back — see reselectAfterRemoteEloChange.
   const isCurrentExerciseExplicitlySelected = ref(false)
+  // The starting level the setup wizard is currently showing, standing in for the profile elo
+  // until one exists — see effectiveUserElo. Stays set afterwards but stops mattering: the
+  // profile the wizard creates carries the same elo and takes precedence over it.
+  const previewElo = ref<number | null>(null)
 
   // Exercise ids are their (untransformed) fens, looked up on every puzzle selection and
   // once per candidate transformation when resolving a fen from a URL — often enough over
@@ -379,18 +383,23 @@ export const useExercisesStore = defineStore('exercises', () => {
 
   // The puzzles the 'around' difficulty preference would select, regardless of the user's
   // actual preference — also the Browse Exercises page's "around my level" filter.
-  const aroundLevelExerciseIds = computed((): Set<string> => {
-    const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
-    return selectAroundBandIds(allExercises.value, userElo)
-  })
+  const aroundLevelExerciseIds = computed(
+    (): Set<string> => selectAroundBandIds(allExercises.value, effectiveUserElo()),
+  )
+
+  // The elo puzzle selection is scoped to: the profile's, or — before one exists — whatever the
+  // setup wizard's starting-level slider currently sits at, so the teaser puzzle behind the modal
+  // actually matches the level being picked.
+  function effectiveUserElo(): number {
+    return useUserProfileStore().profile?.endgameElo ?? previewElo.value ?? DEFAULT_ELO
+  }
 
   // Hard filter applied over the entire exercise pool, before category selection, based on the
   // user's difficultyPreference. The category dropdown, progress counts, and puzzle selection
   // all derive from this, so they stay consistent with each other.
   const difficultyEligibleExercises = computed((): Exercise[] => {
-    const profile = useUserProfileStore().profile
-    const userElo = profile?.endgameElo ?? DEFAULT_ELO
-    const preference = profile?.difficultyPreference ?? 'around'
+    const userElo = effectiveUserElo()
+    const preference = useUserProfileStore().profile?.difficultyPreference ?? 'around'
 
     switch (preference) {
       case 'all':
@@ -495,7 +504,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   // current elo. Used by the difficulty preference settings, which aren't scoped to a category.
   const difficultyPuzzleCounts = computed(
     (): { active: number; tooHard: number; tooEasy: number } => {
-      const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
+      const userElo = effectiveUserElo()
       const eligibleIds = difficultyEligibleIds.value
 
       let tooHard = 0
@@ -535,7 +544,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   // the board. Already-completed ones are left out: unlocking them would offer nothing new,
   // since they stay out of the pool until their attempt ages out anyway.
   const categoryHiddenUncompletedCounts = computed((): { tooHard: number; tooEasy: number } => {
-    const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
+    const userElo = effectiveUserElo()
     const eligibleIds = difficultyEligibleIds.value
 
     let tooHard = 0
@@ -575,7 +584,7 @@ export const useExercisesStore = defineStore('exercises', () => {
   })
 
   const filteredExercises = computed((): Exercise[] => {
-    const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
+    const userElo = effectiveUserElo()
 
     const pool = categoryExercises.value.filter((ex) => !completedExerciseIds.value.has(ex.id))
 
@@ -703,10 +712,10 @@ export const useExercisesStore = defineStore('exercises', () => {
     return { solved, failed, unattempted: total - solved - failed, total, hidden }
   })
 
-  function selectRandom(eloOverride?: number): void {
+  function selectRandom(): void {
     requestedPuzzleNotFound.value = false
     isCurrentExerciseExplicitlySelected.value = false
-    const userElo = eloOverride ?? useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
+    const userElo = effectiveUserElo()
 
     const pool = filteredExercises.value
     if (pool.length === 0) {
@@ -870,9 +879,13 @@ export const useExercisesStore = defineStore('exercises', () => {
   }
 
   // Used by SetupModal to preview an appropriately-difficulty puzzle behind the modal
-  // as the user picks a starting Elo, before any profile exists to read Elo from.
+  // as the user picks a starting Elo, before any profile exists to read Elo from. The elo is
+  // remembered rather than applied to this roll alone: it has to keep standing in for the
+  // profile's until one exists, or the eligible pool the next roll draws from (and everything
+  // else derived from it) falls back to DEFAULT_ELO and hands out puzzles for the wrong level.
   function previewExerciseForElo(elo: number): void {
-    selectRandom(elo)
+    previewElo.value = elo
+    selectRandom()
   }
 
   // Re-rolls the current exercise if it's fallen outside the eligible pool, e.g. after the
@@ -892,11 +905,12 @@ export const useExercisesStore = defineStore('exercises', () => {
   // enough to move the eligible pool re-rolls, and only if the current puzzle actually fell out
   // of it, so the routine background pulls (which fire on every tab focus, see sync.ts) don't
   // swap out a puzzle for no visible reason. `previousElo` is null when no local profile existed
-  // yet — the teaser puzzle was rolled at DEFAULT_ELO in that case.
+  // yet — the teaser puzzle was rolled at the wizard's starting level in that case (or
+  // DEFAULT_ELO, if the wizard never got as far as offering one).
   function reselectAfterRemoteEloChange(previousElo: number | null): void {
     if (isCurrentExerciseExplicitlySelected.value) return
-    const userElo = useUserProfileStore().profile?.endgameElo ?? DEFAULT_ELO
-    if (Math.abs(userElo - (previousElo ?? DEFAULT_ELO)) < ELO_BAND) return
+    if (Math.abs(effectiveUserElo() - (previousElo ?? previewElo.value ?? DEFAULT_ELO)) < ELO_BAND)
+      return
     reselectIfCurrentInvalid()
   }
 

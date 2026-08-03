@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { isAuthRetryableFetchError, type AuthError, type Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabaseClient'
 import { useSyncStore } from '@/stores/sync'
+import { clearTrainingSnapshot } from '@/utils/trainingSessionState'
 
 export interface AuthActionResult {
   error: string | null
@@ -292,6 +293,10 @@ export const useAuthStore = defineStore('auth', () => {
   function resetLocalStateAndRedirect(): void {
     awaitingEmailConfirmation.value = null
     localStorage.clear()
+    // The puzzle in progress lives in sessionStorage, which a same-tab redirect leaves
+    // untouched — without this it would be restored on the way back in and handed to
+    // whoever sets up next, half-played (and possibly already failed).
+    clearTrainingSnapshot()
     window.location.href = window.location.origin + '/'
   }
 

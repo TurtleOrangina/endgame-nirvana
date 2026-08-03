@@ -22,6 +22,7 @@ import {
   pieceSetOrDefault,
 } from '@/utils/boardAppearance'
 import { prefetchAllAppearanceAssets, preloadActiveAppearanceAssets } from '@/utils/preloadAssets'
+import { clearTrainingSnapshot } from '@/utils/trainingSessionState'
 import AppHeader from '@/components/AppHeader.vue'
 import SetupModal from '@/components/SetupModal.vue'
 import PasswordRecoveryModal from '@/components/PasswordRecoveryModal.vue'
@@ -94,7 +95,13 @@ onMounted(async () => {
   // anyway (see startLinkFlow), so it correctly counts as a plain visit.
   if (!profile.value) {
     if (parseCurrentRoute().fen) arrivedOnSharedPuzzle.value = true
-    else setupWizardOpen.value = true
+    else {
+      setupWizardOpen.value = true
+      // Anyone about to go through the wizard starts on a fresh puzzle rolled for the
+      // starting level they pick, never on a half-played one left in this tab's session
+      // by the profile that came before (see auth.ts's resetLocalStateAndRedirect).
+      clearTrainingSnapshot()
+    }
   }
 
   // The OAuth redirect_uri deliberately omits the original query string (see
