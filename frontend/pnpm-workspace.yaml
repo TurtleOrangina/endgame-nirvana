@@ -1,8 +1,8 @@
 allowBuilds:
   stockfish: false
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.2.5
-  vite-plus: ^0.2.5
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.7
+  vite-plus: ^0.2.7
 overrides:
   vite: 'catalog:'
 peerDependencyRules:
