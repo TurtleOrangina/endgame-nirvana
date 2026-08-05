@@ -12,6 +12,7 @@ import { useWakeLock } from '@/composables/useWakeLock'
 import { useHideItemsUntilPageFits } from '@/composables/useHideItemsUntilPageFits'
 import { playerPiecesSortedByValue, type PieceName } from '@/utils/chess'
 import { applyTransformCode } from '@/utils/fenTransform'
+import { puzzleDifficultyBand } from '@/utils/puzzleDifficultyColor'
 import {
   clearTrainingSnapshot,
   saveTrainingSnapshot,
@@ -614,6 +615,28 @@ function onHoverMove(uci: string | null): void {
   boardRef.value?.showMoveArrow(uci)
 }
 
+const expectedResultLabel = computed(() => {
+  switch (currentExercise.value?.expectedResult) {
+    case 'win': {
+      return t((s) => s.app.resultWin)
+    }
+    case 'draw': {
+      return t((s) => s.app.resultDraw)
+    }
+    default: {
+      return t((s) => s.app.resultLoss)
+    }
+  }
+})
+
+// Colours the difficulty chip relative to the user's own elo, the same way the puzzle
+// cards on the browse and progress pages do.
+const difficultyBandClass = computed(() => {
+  const exercise = currentExercise.value
+  if (!exercise) return null
+  return puzzleDifficultyBand(parseInt(exercise.difficulty), profile.value?.endgameElo ?? 1400)
+})
+
 const selectedCategoryLabel = computed(
   () => selectedCategory.value?.split('/').join(' › ') ?? t((s) => s.app.allCategories),
 )
@@ -893,6 +916,20 @@ defineExpose({
               >
                 {{ eloChangeLabel }}
               </span>
+              <!-- Difficulty and expected result live here rather than among the meta
+                   chips below: those are dropped on short screens, and these two are the
+                   pieces of puzzle info players most want to see. -->
+              <span
+                v-if="currentExercise && puzzleStatus !== PuzzleStatus.SOLVING && !isGuest"
+                class="stat-chips"
+              >
+                <span class="tag tag-difficulty" :class="difficultyBandClass">
+                  {{ currentExercise.difficulty }}
+                </span>
+                <span class="tag" :class="currentExercise.expectedResult">
+                  {{ expectedResultLabel }}
+                </span>
+              </span>
             </div>
             <div v-if="!isSessionStatHidden" class="stat-row">
               <span class="stat-label">{{ t((s) => s.app.session) }}</span>
@@ -936,16 +973,6 @@ defineExpose({
               @click="selectCategoryFromChip(1)"
             >
               {{ currentExercise.subcategory }}
-            </span>
-            <span class="tag">{{ currentExercise.difficulty }}</span>
-            <span class="tag" :class="currentExercise.expectedResult">
-              {{
-                currentExercise.expectedResult === 'win'
-                  ? t((s) => s.app.resultWin)
-                  : currentExercise.expectedResult === 'draw'
-                    ? t((s) => s.app.resultDraw)
-                    : t((s) => s.app.resultLoss)
-              }}
             </span>
           </section>
 
@@ -1414,6 +1441,14 @@ defineExpose({
   color: var(--muted);
 }
 
+/* Pushed to the right end of the "Current level" row, where there is spare space. */
+.stat-chips {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .stat-value {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -1463,6 +1498,27 @@ defineExpose({
   white-space: nowrap;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+/* Difficulty bands relative to the user's elo — same colours as the puzzle cards on
+   the browse and progress pages. */
+.tag-difficulty {
+  font-variant-numeric: tabular-nums;
+}
+
+.tag.harder {
+  border-color: var(--color-failed);
+  color: var(--color-failed);
+}
+
+.tag.match {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-fg);
+}
+
+.tag.easier {
+  border-color: var(--color-solved);
+  color: var(--color-solved);
 }
 
 .tag.win {

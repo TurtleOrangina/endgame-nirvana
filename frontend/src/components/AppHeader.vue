@@ -109,9 +109,23 @@ function onKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && menuOpen.value) closeMenu()
 }
 
-const versusSides = computed<SidePieces[]>(() =>
-  props.versusPieces ? [props.versusPieces.player, props.versusPieces.opponent] : [],
-)
+// Pieces come sorted by value, so identical pieces are adjacent: each pawn after the
+// first is drawn overlapping its predecessor, which keeps a side like K+4×P from eating
+// the whole header row. Only pawns — the taller pieces read badly once they overlap.
+type DisplayedPiece = { name: PieceName; overlapsPrevious: boolean }
+
+const versusSides = computed<{ color: 'white' | 'black'; pieces: DisplayedPiece[] }[]>(() => {
+  if (!props.versusPieces) return []
+  return [props.versusPieces.player, props.versusPieces.opponent].map(
+    (side: SidePieces): { color: 'white' | 'black'; pieces: DisplayedPiece[] } => ({
+      color: side.color,
+      pieces: side.pieces.map((name, index) => ({
+        name,
+        overlapsPrevious: name === 'pawn' && side.pieces[index - 1] === 'pawn',
+      })),
+    }),
+  )
+})
 
 // Whether the "player pieces vs computer pieces" title fits the header row. While it
 // doesn't fit, the versus title stays rendered but absolutely positioned and invisible,
@@ -170,9 +184,13 @@ watch(
             </span>
             <span class="title-pieces cg-wrap">
               <piece
-                v-for="(pieceName, index) in side.pieces"
+                v-for="(displayedPiece, index) in side.pieces"
                 :key="index"
-                :class="[side.color, pieceName]"
+                :class="[
+                  side.color,
+                  displayedPiece.name,
+                  { overlapping: displayedPiece.overlapsPrevious },
+                ]"
               />
             </span>
           </template>
@@ -371,6 +389,12 @@ watch(
   width: 24px;
   height: 24px;
   background-size: cover;
+}
+
+/* Repeated pawns slide onto their predecessor (later ones paint on top, since they
+   come later in the DOM), so they read as a stack rather than a long row. */
+.title-pieces piece.overlapping {
+  margin-left: -15px;
 }
 
 .dropdown {
