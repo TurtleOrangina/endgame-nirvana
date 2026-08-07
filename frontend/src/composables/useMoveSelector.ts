@@ -29,7 +29,9 @@ import {
 // Lives here rather than at the call site so the defensive-resistance measurement
 // (src/__tests__/defensive-resistance/) can drive the selector exactly as the board does.
 export const TEMPERATURE = 0.2 // the engine defends accurately
-// On pawnless retrys more variance is accepted, to see more variations
+// Pawnless positions have far fewer structural traps, so more variance is accepted to
+// see more variations — mildly on the first try, generously on retries
+export const TEMPERATURE_PAWNLESS_FIRST_TRY = 0.33
 export const TEMPERATURE_PAWNLESS_RETRY = 0.6
 
 const BESTMOVE_MULTIPV = 5

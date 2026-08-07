@@ -14,6 +14,7 @@ import { useLichessTablebase } from '@/composables/useLichessTablebase'
 import { useLocale } from '@/composables/useLocale'
 import {
   TEMPERATURE,
+  TEMPERATURE_PAWNLESS_FIRST_TRY,
   TEMPERATURE_PAWNLESS_RETRY,
   useMoveSelector,
   type MoveSelectionResult,
@@ -1111,10 +1112,11 @@ async function triggerEngineTurn(gen: number, isPremove = false): Promise<void> 
   const currentFen = chess.fen()
   const { fen: startFen, moves } = getPositionArgs()
   const selection = await moveSelector.getBestMove(startFen, moves, currentFen, {
-    temperature:
-      !props.isRatedAttempt && !hasPawnsOnBoard(currentFen)
-        ? TEMPERATURE_PAWNLESS_RETRY
-        : TEMPERATURE,
+    temperature: hasPawnsOnBoard(currentFen)
+      ? TEMPERATURE
+      : props.isRatedAttempt
+        ? TEMPERATURE_PAWNLESS_FIRST_TRY
+        : TEMPERATURE_PAWNLESS_RETRY,
     isPremove,
     playerColor,
     queryTablebase: shouldQueryTablebase(currentFen),
