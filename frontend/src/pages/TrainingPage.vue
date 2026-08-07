@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import confetti from 'canvas-confetti'
-import { useExercisesStore, type CategoryOption } from '@/stores/exercises'
+import { useExercisesStore } from '@/stores/exercises'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useStockfishEngine } from '@/composables/useStockfishEngine'
 import { useResultAudio } from '@/composables/useResultAudio'
@@ -10,9 +10,12 @@ import { buildRouteUrl, type AppView } from '@/composables/useAppRouter'
 import { useLocale } from '@/composables/useLocale'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { useHideItemsUntilPageFits } from '@/composables/useHideItemsUntilPageFits'
+import { useCategoryTreeExpansion } from '@/composables/useCategoryTreeExpansion'
 import { playerPiecesSortedByValue, type PieceName } from '@/utils/chess'
 import { applyTransformCode } from '@/utils/fenTransform'
 import { puzzleDifficultyBand } from '@/utils/puzzleDifficultyColor'
+import { categoryPathLabel, categorySegmentLabel } from '@/utils/categoryLabels'
+import { tagLabel } from '@/utils/puzzleTags'
 import {
   clearTrainingSnapshot,
   saveTrainingSnapshot,
@@ -22,6 +25,7 @@ import ChessBoard from '@/components/ChessBoard.vue'
 import AnalysisPanel from '@/components/AnalysisPanel.vue'
 import BoardNavControls from '@/components/BoardNavControls.vue'
 import CategorySolveCount from '@/components/CategorySolveCount.vue'
+import CategoryExpandToggle from '@/components/CategoryExpandToggle.vue'
 import {
   PuzzleStatus,
   type DifficultyPreference,
@@ -637,8 +641,10 @@ const difficultyBandClass = computed(() => {
   return puzzleDifficultyBand(parseInt(exercise.difficulty), profile.value?.endgameElo ?? 1400)
 })
 
-const selectedCategoryLabel = computed(
-  () => selectedCategory.value?.split('/').join(' › ') ?? t((s) => s.app.allCategories),
+const selectedCategoryLabel = computed(() =>
+  selectedCategory.value === null
+    ? t((s) => s.app.allCategories)
+    : categoryPathLabel(selectedCategory.value),
 )
 
 const emptyBoardSquares = Array.from({ length: 64 }, (_, index) => ({
@@ -646,49 +652,13 @@ const emptyBoardSquares = Array.from({ length: 64 }, (_, index) => ({
   dark: (Math.floor(index / 8) + (index % 8)) % 2 === 1,
 }))
 
-// Every ancestor path prefix of a category value, e.g. "A/B/C" -> ["A", "A/B"].
-// Used to pre-expand the tree down to whatever category is currently selected.
-function ancestorsOf(value: string | null): string[] {
-  if (!value) return []
-  const segments = value.split('/')
-  const prefixes: string[] = []
-  let prefix = ''
-  for (const segment of segments.slice(0, -1)) {
-    prefix = prefix ? `${prefix}/${segment}` : segment
-    prefixes.push(prefix)
-  }
-  return prefixes
-}
-
-const expandedCategories = ref<Set<string>>(new Set(ancestorsOf(selectedCategory.value)))
-
-function toggleCategoryExpanded(value: string): void {
-  const next = new Set(expandedCategories.value)
-  if (next.has(value)) next.delete(value)
-  else next.add(value)
-  expandedCategories.value = next
-}
-
-// categoryOptions is a depth-first flattened tree. Collapsing a node hides every
-// following option whose depth is greater than that node's, until we come back out to
-// its own depth or shallower.
-const visibleCategoryOptions = computed(() => {
-  const options = categoryOptions.value
-  const result: (CategoryOption & { hasChildren: boolean })[] = []
-  let collapseFromDepth: number | null = null
-  for (let i = 0; i < options.length; i++) {
-    const opt = options[i]
-    if (!opt) continue
-    if (collapseFromDepth !== null && opt.depth > collapseFromDepth) continue
-    collapseFromDepth = null
-    const hasChildren = (options[i + 1]?.depth ?? -1) > opt.depth
-    result.push({ ...opt, hasChildren })
-    if (hasChildren && !expandedCategories.value.has(opt.value)) {
-      collapseFromDepth = opt.depth
-    }
-  }
-  return result
-})
+const {
+  isExpanded: isCategoryExpanded,
+  toggleCategoryExpanded,
+  expandDownTo,
+  visibleOptions: visibleCategoryOptions,
+} = useCategoryTreeExpansion(categoryOptions)
+expandDownTo(selectedCategory.value)
 
 // Widens the difficulty preference just enough to include puzzles on one side of the
 // user's level, e.g. towards 'above': 'around' -> 'aroundAndAbove', 'aroundAndBelow' ->
@@ -964,7 +934,7 @@ defineExpose({
               :title="t((s) => s.app.categoryChipTitle)"
               @click="selectCategoryFromChip(0)"
             >
-              {{ currentExercise.category }}
+              {{ categorySegmentLabel(currentExercise.category) }}
             </span>
             <span
               v-if="currentExercise.subcategory"
@@ -972,7 +942,15 @@ defineExpose({
               :title="t((s) => s.app.subcategoryChipTitle)"
               @click="selectCategoryFromChip(1)"
             >
-              {{ currentExercise.subcategory }}
+              {{ categorySegmentLabel(currentExercise.subcategory) }}
+            </span>
+            <span
+              v-for="tag in currentExercise.tags"
+              :key="tag"
+              class="tag tag-theme"
+              :title="t((s) => s.app.themeChipTitle)"
+            >
+              {{ tagLabel(tag) }}
             </span>
           </section>
 
@@ -1017,30 +995,11 @@ defineExpose({
                   :style="{ paddingLeft: `calc(0.5rem + ${opt.depth} * 1rem)` }"
                   @click="selectCategory(opt.value)"
                 >
-                  <button
+                  <CategoryExpandToggle
                     v-if="opt.hasChildren"
-                    class="option-expand"
-                    :class="{ expanded: expandedCategories.has(opt.value) }"
-                    :title="
-                      expandedCategories.has(opt.value)
-                        ? t((s) => s.common.collapse)
-                        : t((s) => s.common.expand)
-                    "
-                    @click.stop="toggleCategoryExpanded(opt.value)"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <polyline points="9 6 15 12 9 18" />
-                    </svg>
-                  </button>
-                  <span v-else-if="opt.depth > 0" class="option-marker">∟</span>
+                    :expanded="isCategoryExpanded(opt.value)"
+                    @toggle="toggleCategoryExpanded(opt.value)"
+                  />
                   <span class="option-label">{{ opt.label }}</span>
                   <CategorySolveCount :attempted="opt.attempted" :total="opt.total" />
                 </div>
@@ -1335,49 +1294,12 @@ defineExpose({
   font-weight: 600;
 }
 
-.option-marker {
-  color: var(--muted);
-  margin-right: 0.3rem;
-}
-
 .option-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.option-expand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  margin-right: 0.2rem;
-  margin-left: -0.2rem;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0;
-  border-radius: 3px;
-  transition: color 0.1s;
-}
-
-.option-expand:hover {
-  color: var(--fg);
-}
-
-.option-expand svg {
-  width: 12px;
-  height: 12px;
-  transition: transform 0.1s;
-}
-
-.option-expand.expanded svg {
-  transform: rotate(90deg);
 }
 
 .category-progress {
@@ -1543,6 +1465,12 @@ defineExpose({
 .tag-category:hover {
   background: #0258b4;
   color: #ffffff;
+}
+
+/* Themes are informational only — no filter behind them, so no pointer/hover affordance. */
+.tag-theme {
+  border-color: var(--border);
+  color: var(--muted);
 }
 
 /* ── Wrong solution ────────────────────────────────────────── */

@@ -8,6 +8,7 @@ import {
   pickRandomTransformCode,
 } from '@/utils/fenTransform'
 import { migrateLegacyExerciseId } from '@/utils/exerciseId'
+import { categorySegmentLabel } from '@/utils/categoryLabels'
 import { RECENT_ATTEMPT_EXCLUSION_MS } from '@/utils/attemptWindow'
 import type { Tables } from '@/types/database'
 
@@ -16,12 +17,14 @@ interface PuzzleRow {
   category_path: string
   expected_result: string
   current_elo: number
+  tags?: string[]
 }
 
 interface RawExercise {
   fen: string
   expected_result: string
   difficulty: string | number
+  tags?: string[]
 }
 
 const EXERCISES_CACHE_KEY = 'exercisesCache'
@@ -41,6 +44,9 @@ export interface Exercise {
   fen: string
   difficulty: string
   expectedResult: string
+  // Themes the puzzle illustrates (opposition, breakthrough, …). Free-form and
+  // many-per-puzzle, unlike the category, which is one material relation per puzzle.
+  tags: string[]
 }
 
 // A node in the category selection dropdown, flattened with `depth` for indentation.
@@ -154,6 +160,7 @@ function flattenCatalog(catalog: Record<string, RawExercise[]>): PuzzleRow[] {
         category_path: categoryPath,
         expected_result: exercise.expected_result,
         current_elo: Number(exercise.difficulty),
+        tags: exercise.tags,
       })
     }
   }
@@ -173,6 +180,7 @@ function buildExercises(puzzles: PuzzleRow[]): Exercise[] {
       fen: puzzle.id,
       difficulty: String(puzzle.current_elo),
       expectedResult: puzzle.expected_result,
+      tags: puzzle.tags ?? [],
     }
   })
 }
@@ -217,18 +225,22 @@ function buildCategoryTreeNodes(
   return roots
 }
 
-// Flattens a category tree depth-first. Top-level categories are sorted alphabetically;
-// deeper levels preserve the curriculum order from exercises.json.
+// Flattens a category tree depth-first, preserving the curriculum order of exercises.json at
+// every level — including the top one, which used to be sorted alphabetically: the material
+// relations it now holds are written in figurine notation ("♖ vs ♝"), whose sort order says
+// nothing about anything, while the file lists them easiest-first.
 function flattenCategoryTree(
   nodes: Map<string, CategoryTreeNode>,
   depth: number,
 ): CategoryOption[] {
-  const ordered =
-    depth === 0
-      ? [...nodes.values()].sort((a, b) => a.label.localeCompare(b.label))
-      : [...nodes.values()]
-  return ordered.flatMap((node) => [
-    { label: node.label, value: node.value, depth, attempted: node.attempted, total: node.total },
+  return [...nodes.values()].flatMap((node) => [
+    {
+      label: categorySegmentLabel(node.label),
+      value: node.value,
+      depth,
+      attempted: node.attempted,
+      total: node.total,
+    },
     ...flattenCategoryTree(node.children, depth + 1),
   ])
 }
@@ -293,9 +305,47 @@ function loadSolvedExercises(): Map<string, string> {
   }
 }
 
+// The catalog was reorganised around material relations ("♖ vs ♝") instead of the scrape's
+// original chapter names, so a category persisted before that would now select nothing.
+// Longest prefix wins, and subcategories ride along on their parent's prefix.
+const RENAMED_CATEGORY_PREFIXES: [oldPrefix: string, newPrefix: string][] = [
+  ['Basic Endgames', 'Pure Pieces Endgames'],
+  ['Bishop+Knight vs King', 'Pure Pieces Endgames/♔♗♘ vs ♚'],
+  ['Rook+Bishop vs Rook', 'Pure Pieces Endgames/♔♖♗ vs ♚♜'],
+  ['Queen vs Rook/Only', 'Pure Pieces Endgames/♔♕ vs ♚♜'],
+  ['Queen vs Rook/And Pawns', '♕ vs ♜'],
+  ['Queen vs Rook', '♕ vs ♜'],
+  ['Queen Endgames', '♕ vs ♛'],
+  ['Knight vs Pawns', '♘ vs Pawns'],
+  ['Knights Endgames', '♘ vs ♞'],
+  ['Bishop vs Pawns', '♗ vs Pawns'],
+  ['Bishop vs Knight', '♗ vs ♞'],
+  ['Opposite-Colored Bishops', '♗ vs ♝/Opposite Colour'],
+  ['Same Color Bishops', '♗ vs ♝/Same Colour'],
+  ['Rook vs Pawns', '♖ vs Pawns'],
+  ['Rook Endgames', '♖ vs ♜'],
+  ['Rook vs Knight', '♖ vs ♞'],
+  ['Rook vs Bishop & Multiple Pawns', '♖ vs ♝'],
+  ['Rook vs Bishop', '♖ vs ♝'],
+]
+
+function migrateRenamedCategory(category: string): string {
+  for (const [oldPrefix, newPrefix] of RENAMED_CATEGORY_PREFIXES) {
+    if (category === oldPrefix) return newPrefix
+    if (category.startsWith(`${oldPrefix}/`)) {
+      return newPrefix + category.slice(oldPrefix.length)
+    }
+  }
+  return category
+}
+
 function loadSelectedCategory(): string | null {
   try {
-    return localStorage.getItem('selectedCategory')
+    const stored = localStorage.getItem('selectedCategory')
+    if (stored === null) return null
+    const migrated = migrateRenamedCategory(stored)
+    if (migrated !== stored) localStorage.setItem('selectedCategory', migrated)
+    return migrated
   } catch {
     return null
   }
@@ -339,6 +389,7 @@ export const useExercisesStore = defineStore('exercises', () => {
     const cache = loadExercisesCache()
     if (cache) {
       allExercises.value = buildExercises(cache.puzzles)
+      pruneSelectedCategoryToExisting()
       isLoading.value = false
       selectInitial(requestedFen)
       void refreshExerciseCatalog(requestedFen)
@@ -347,6 +398,23 @@ export const useExercisesStore = defineStore('exercises', () => {
 
     await refreshExerciseCatalog(requestedFen)
     isLoading.value = false
+  }
+
+  // A persisted category can outlive the catalog shape it was picked from: subcategories get
+  // merged into their parent, themes turn into tags. Rather than leaving the user staring at
+  // a category that no longer holds anything, fall back to the nearest ancestor that does —
+  // ultimately "all categories". Callers pick a puzzle right afterwards, so this deliberately
+  // doesn't go through setCategory (whose re-roll would be thrown away).
+  function pruneSelectedCategoryToExisting(): void {
+    let candidate = selectedCategory.value
+    while (candidate !== null && filterByCategory(allExercises.value, candidate).length === 0) {
+      const parentEnd = candidate.lastIndexOf('/')
+      candidate = parentEnd === -1 ? null : candidate.slice(0, parentEnd)
+    }
+    if (candidate === selectedCategory.value) return
+    selectedCategory.value = candidate
+    if (candidate === null) localStorage.removeItem('selectedCategory')
+    else localStorage.setItem('selectedCategory', candidate)
   }
 
   function selectInitial(requestedFen: string | null): void {
@@ -363,6 +431,7 @@ export const useExercisesStore = defineStore('exercises', () => {
 
     persistExercisesCache({ puzzles })
     allExercises.value = buildExercises(puzzles)
+    pruneSelectedCategoryToExisting()
 
     if (currentExerciseId.value === null) {
       // Retry a not-yet-found requested puzzle against the fresh catalog before
@@ -452,9 +521,8 @@ export const useExercisesStore = defineStore('exercises', () => {
   }
 
   // Builds the category tree from exercise paths, then flattens it depth-first for the
-  // dropdown. Top-level categories are sorted alphabetically (matching prior behaviour);
-  // deeper levels preserve the curriculum order from exercises.json. Shared by
-  // categoryOptions (progress-filtered pool) and catalogCategoryOptions (entire catalog).
+  // dropdown, in the curriculum order of exercises.json. Shared by categoryOptions
+  // (progress-filtered pool) and catalogCategoryOptions (entire catalog).
   const categoryOptions = computed((): CategoryOption[] =>
     flattenCategoryTree(
       buildCategoryTreeNodes(
@@ -670,14 +738,10 @@ export const useExercisesStore = defineStore('exercises', () => {
     }
 
     function build(nodes: Map<string, TreeNode>, depth: number): CategoryProgressNode[] {
-      const ordered =
-        depth === 0
-          ? [...nodes.values()].sort((a, b) => a.label.localeCompare(b.label))
-          : [...nodes.values()]
-      return ordered
+      return [...nodes.values()]
         .filter((node) => node.solved > 0 || node.failed > 0)
         .map((node) => ({
-          label: node.label,
+          label: categorySegmentLabel(node.label),
           value: node.value,
           depth,
           solved: node.solved,

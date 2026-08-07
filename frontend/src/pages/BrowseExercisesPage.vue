@@ -5,6 +5,8 @@ import { useExercisesStore, type Exercise } from '@/stores/exercises'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useLocale } from '@/composables/useLocale'
 import { puzzleDifficultyBand } from '@/utils/puzzleDifficultyColor'
+import { categoryPathSearchText } from '@/utils/categoryLabels'
+import { useProgressivelyRevealedItems } from '@/composables/useProgressivelyRevealedItems'
 import MiniBoard from '@/components/MiniBoard.vue'
 import CategorySolveCount from '@/components/CategorySolveCount.vue'
 
@@ -80,13 +82,14 @@ const filteredCategoryOptions = computed(() =>
 )
 
 // Words separated by whitespace are combined with AND, matched against the category's
-// full path (not just its own label) — e.g. "rook knight" matches "Knight+Rook vs Rook"
-// wherever those words fall in the category hierarchy, but not "Knight + Bishop vs King".
+// full path (not just its own label) — e.g. "rook knight" matches "♖ vs ♞/Shouldering"
+// wherever those words fall in the category hierarchy, but not "♔♗♘ vs ♚". Figurine
+// segments carry plain-word aliases so they are typeable at all (see categoryLabels.ts).
 const filteredOptions = computed(() => {
   const terms = searchQuery.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
   if (terms.length === 0) return filteredCategoryOptions.value
   return filteredCategoryOptions.value.filter((opt) => {
-    const haystack = opt.value.toLowerCase()
+    const haystack = categoryPathSearchText(opt.value)
     return terms.every((term) => haystack.includes(term))
   })
 })
@@ -100,6 +103,15 @@ const expandedPuzzles = computed((): Exercise[] =>
     ? exercisesStore.puzzlesInCategory(expandedCategory.value).filter(matchesFilters)
     : [],
 )
+
+// The biggest categories hold 500+ puzzles, each of which mounts its own board — mount them
+// a screenful at a time instead of freezing the page on expand.
+const PUZZLES_PER_CHUNK = 48
+const {
+  visibleItems: visiblePuzzles,
+  hasMoreItems: hasMorePuzzles,
+  setSentinel: setPuzzleSentinel,
+} = useProgressivelyRevealedItems(expandedPuzzles, PUZZLES_PER_CHUNK)
 
 function eloBandClass(exercise: Exercise): string {
   return puzzleDifficultyBand(parseInt(exercise.difficulty), profile.value?.endgameElo ?? 1400)
@@ -181,13 +193,14 @@ const difficultyFilterOptions = computed((): { value: DifficultyFilter; label: s
           :style="{ paddingLeft: `calc(0.5rem + ${opt.depth} * 1rem)` }"
           @click="toggleCategory(opt.value)"
         >
+          <span v-if="opt.depth > 0" class="category-marker">∟</span>
           <span class="category-label">{{ opt.label }}</span>
           <CategorySolveCount :attempted="0" :total="opt.total" />
         </div>
 
         <div v-if="expandedCategory === opt.value" class="puzzle-grid">
           <div
-            v-for="exercise in expandedPuzzles"
+            v-for="exercise in visiblePuzzles"
             :key="exercise.id"
             class="puzzle-card"
             @click="onPuzzleClick(exercise)"
@@ -231,6 +244,7 @@ const difficultyFilterOptions = computed((): { value: DifficultyFilter; label: s
               </svg>
             </div>
           </div>
+          <div v-if="hasMorePuzzles" :ref="setPuzzleSentinel" class="puzzle-load-more" />
         </div>
       </template>
     </div>
@@ -350,6 +364,14 @@ const difficultyFilterOptions = computed((): { value: DifficultyFilter; label: s
   font-weight: 600;
 }
 
+/* Marks a row as nested: this list shows the whole tree at once, where indentation alone is
+   easy to miss. */
+.category-marker {
+  flex-shrink: 0;
+  margin-right: 0.3rem;
+  color: var(--muted);
+}
+
 .category-label {
   flex: 1;
   min-width: 0;
@@ -363,6 +385,12 @@ const difficultyFilterOptions = computed((): { value: DifficultyFilter; label: s
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 0.6rem;
   padding: 0.6rem 0.5rem 1rem;
+}
+
+/* Spans the grid so it is reached by scrolling past the last row, whatever the column count. */
+.puzzle-load-more {
+  grid-column: 1 / -1;
+  height: 1px;
 }
 
 .puzzle-card {

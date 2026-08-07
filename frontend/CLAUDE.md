@@ -67,7 +67,7 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
   known id (`exercises.ts`'s `resolveTransformedFen`), so attempts are still reported under
   the original fen and no transformed-fen lookup table is needed.
 - The puzzle catalog itself (`src/stores/exercises.ts`) is a **static frontend asset**
-  (`public/exercises.json`, not committed — see `.gitignore`), not downloaded from the
+  (`public/exercises.json`, committed to the repo), not downloaded from the
   backend: the `public.puzzles` table has no client read access at all (see
   `backend/CLAUDE.md`), since an unauthenticated, unrestricted select on the whole
   puzzle pool was an easy DoS vector. `exercises.json` is refreshed periodically by

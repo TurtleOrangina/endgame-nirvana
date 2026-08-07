@@ -11,7 +11,7 @@ const MAX_PIECE_COUNT = 6
 export const QUEEN_VS_ROOK_FEN = '8/8/4r3/4k3/8/3QK3/8/8 w - - 0 1'
 
 const PAWN_ENDGAME_PREFIX = '/Pawn Endgames'
-const ROOK_ENDGAME_PREFIX = '/Rook Endgames'
+const ROOK_ENDGAME_PREFIX = '/♖ vs ♜'
 
 export type PuzzleGroup = 'Queen vs Rook' | 'Pawn Endgames' | 'Rook Endgames' | 'Other'
 
