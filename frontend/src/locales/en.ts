@@ -229,10 +229,19 @@ export const en = {
     accountNotCreatedNotice:
       'Your account could not be created yet, your progress is only stored locally!',
     createAccountTitle: 'Create Account',
+    createAccountTab: 'Create Account',
+    signInTab: 'Sign In',
+    signIn: 'Sign In',
+    signInTitle: 'Sign In',
+    sessionExpiredNotice:
+      'You have been signed out of your account, so this device has stopped syncing — its progress is currently only stored locally!',
+    sessionExpiredHint:
+      'This can happen when you sign out on another device or change your password. Sign in again to upload the progress made here and get back in sync.',
+    sessionExpiredStatus: 'Signed out ({email})',
     pendingIntro: 'Account creation for',
     pendingOutro: "hasn't completed yet — enter your password to retry.",
     emailAlreadyRegistered:
-      'This email is already registered. Use "Forgot password?" below to reset it via email and sign in.',
+      'This email is already registered — enter your password to sign in instead. If you have forgotten it, use "Forgot password?" below.',
     solveProgress: 'Solve Progress',
     eloTitle: 'Elo',
     currentEloLabel: 'Current',

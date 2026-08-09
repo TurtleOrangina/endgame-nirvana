@@ -236,11 +236,20 @@ export const de: typeof en = {
     accountNotCreatedNotice:
       'Dein Konto konnte noch nicht erstellt werden, dein Fortschritt wird nur lokal gespeichert!',
     createAccountTitle: 'Konto erstellen',
+    createAccountTab: 'Konto erstellen',
+    signInTab: 'Anmelden',
+    signIn: 'Anmelden',
+    signInTitle: 'Anmelden',
+    sessionExpiredNotice:
+      'Du wurdest von deinem Konto abgemeldet, deshalb synchronisiert dieses Gerät nicht mehr — sein Fortschritt wird derzeit nur lokal gespeichert!',
+    sessionExpiredHint:
+      'Das passiert zum Beispiel, wenn du dich auf einem anderen Gerät abmeldest oder dein Passwort änderst. Melde dich erneut an, um den hier erzielten Fortschritt hochzuladen und wieder zu synchronisieren.',
+    sessionExpiredStatus: 'Abgemeldet ({email})',
     pendingIntro: 'Die Kontoerstellung für',
     pendingOutro:
       'ist noch nicht abgeschlossen — gib dein Passwort ein, um es erneut zu versuchen.',
     emailAlreadyRegistered:
-      'Diese E-Mail-Adresse ist bereits registriert. Nutze „Passwort vergessen?“ unten, um es per E-Mail zurückzusetzen und dich anzumelden.',
+      'Diese E-Mail-Adresse ist bereits registriert — gib dein Passwort ein, um dich stattdessen anzumelden. Falls du es vergessen hast, nutze „Passwort vergessen?“ unten.',
     solveProgress: 'Lösungsfortschritt',
     eloTitle: 'Elo',
     currentEloLabel: 'Aktuell',

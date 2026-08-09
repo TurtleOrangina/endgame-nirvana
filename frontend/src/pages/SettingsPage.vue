@@ -12,6 +12,7 @@ import { isValidEmail } from '@/utils/email'
 import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
 import GoogleSignInButton from '@/components/GoogleSignInButton.vue'
 import AppearanceSwatchGrid from '@/components/AppearanceSwatchGrid.vue'
+import type { AuthActionResult } from '@/stores/auth'
 import type { DifficultyPreference, Language, ThemeMode } from '@/types'
 
 const userProfileStore = useUserProfileStore()
@@ -23,7 +24,22 @@ const syncStore = useSyncStore()
 const lichessAuth = useLichessAuth()
 const { t } = useLocale()
 
-const accountEmail = ref('')
+// Signing in has to be reachable here, not just in SetupModal's wizard: that modal
+// only opens when there is no local profile at all, so a device that has a profile
+// but lost its session (see authStore.sessionExpired) could otherwise only get back
+// in by going through a password reset email. Defaults to signing in for exactly
+// that device, and to account creation for someone who has never had one.
+const accountMode = ref<'new' | 'signin'>(authStore.sessionExpired ? 'signin' : 'new')
+
+function selectAccountMode(mode: 'new' | 'signin'): void {
+  accountMode.value = mode
+  accountError.value = null
+  accountEmailError.value = null
+}
+
+// Prefilled for a device whose session was revoked: it already knows which account
+// it fell out of, and re-signing in is the fix.
+const accountEmail = ref(authStore.lastSignedInEmail ?? '')
 const accountPassword = ref('')
 const accountSubmitting = ref(false)
 const accountError = ref<string | null>(null)
@@ -33,7 +49,28 @@ const confirmationRetryError = ref<string | null>(null)
 const resetEmailSentTo = ref<string | null>(null)
 const isSendingResetEmail = ref(false)
 
+// Why this device isn't syncing: never had an account, couldn't finish creating one,
+// or had one and got signed out of it (see authStore.sessionExpired).
+const notSyncingNotice = computed(() => {
+  if (authStore.sessionExpired) return t((s) => s.profile.sessionExpiredNotice)
+  if (authStore.pendingRegistration) return t((s) => s.profile.accountNotCreatedNotice)
+  return t((s) => s.profile.localOnlyNotice)
+})
+
+// A half-finished registration is its own flow (retry with the stored email), so it
+// keeps the mode tabs hidden and outranks the selected mode.
+const isSignInMode = computed(
+  () => accountMode.value === 'signin' && !authStore.pendingRegistration,
+)
+
+const accountFormTitle = computed(() =>
+  isSignInMode.value ? t((s) => s.profile.signInTitle) : t((s) => s.profile.createAccountTitle),
+)
+
 const accountSubmitLabel = computed(() => {
+  if (isSignInMode.value) {
+    return accountSubmitting.value ? t((s) => s.profile.signingIn) : t((s) => s.profile.signIn)
+  }
   if (authStore.pendingRegistration) {
     return accountSubmitting.value ? t((s) => s.profile.retrying) : t((s) => s.profile.retry)
   }
@@ -41,6 +78,24 @@ const accountSubmitLabel = computed(() => {
     ? t((s) => s.profile.creatingAccount)
     : t((s) => s.profile.createAccount)
 })
+
+// Signing in is also what repairs an expired session: the SIGNED_IN listener runs
+// pullRemoteState, which first flushes everything this device queued while its
+// session was gone and then applies the cloud profile.
+async function submitAccountForm(): Promise<AuthActionResult> {
+  if (isSignInMode.value) {
+    return authStore.signIn(accountEmail.value.trim(), accountPassword.value)
+  }
+  if (authStore.pendingRegistration) {
+    return authStore.retryPendingRegistration(accountPassword.value)
+  }
+  return authStore.signUp(
+    accountEmail.value,
+    accountPassword.value,
+    profile.value?.username ?? '',
+    profile.value?.endgameElo ?? 1400,
+  )
+}
 
 async function onAccountSubmit(): Promise<void> {
   accountError.value = null
@@ -52,18 +107,16 @@ async function onAccountSubmit(): Promise<void> {
   }
 
   accountSubmitting.value = true
-  const result = await (authStore.pendingRegistration
-    ? authStore.retryPendingRegistration(accountPassword.value)
-    : authStore.signUp(
-        accountEmail.value,
-        accountPassword.value,
-        profile.value?.username ?? '',
-        profile.value?.endgameElo ?? 1400,
-      ))
+  const result = await submitAccountForm()
   accountSubmitting.value = false
 
   if (result.emailAlreadyRegistered) {
-    accountEmailError.value = t((s) => s.profile.emailAlreadyRegistered)
+    // The account exists, so switch them to the flow that can actually use it
+    // rather than leaving them to work it out from an error message.
+    selectAccountMode('signin')
+    accountError.value = t((s) => s.profile.emailAlreadyRegistered)
+  } else if (result.invalidCredentials) {
+    accountError.value = t((s) => s.setup.errorInvalidCredentials)
   } else if (result.error) {
     accountError.value = result.error
   } else {
@@ -187,6 +240,14 @@ const inactivePuzzlesDetail = computed((): string | null => {
   return parts.length > 0 ? parts.join(', ') : null
 })
 
+const accountStatusLabel = computed(() => {
+  if (authStore.isSignedIn) return authStore.userEmail
+  if (authStore.sessionExpired) {
+    return t((s) => s.profile.sessionExpiredStatus, { email: authStore.lastSignedInEmail ?? '' })
+  }
+  return t((s) => s.profile.noAccount)
+})
+
 const deleteAccountLabel = computed(() =>
   authStore.isSignedIn ? t((s) => s.profile.deleteAccount) : t((s) => s.profile.deleteProgress),
 )
@@ -219,17 +280,34 @@ const deleteAccountLabel = computed(() =>
       </template>
 
       <template v-else>
-        <p class="local-only-notice">
-          {{
-            authStore.pendingRegistration
-              ? t((s) => s.profile.accountNotCreatedNotice)
-              : t((s) => s.profile.localOnlyNotice)
-          }}
+        <p class="local-only-notice">{{ notSyncingNotice }}</p>
+
+        <div v-if="!authStore.pendingRegistration" class="mode-tabs">
+          <button
+            type="button"
+            class="mode-tab"
+            :class="{ active: accountMode === 'new' }"
+            @click="selectAccountMode('new')"
+          >
+            {{ t((s) => s.profile.createAccountTab) }}
+          </button>
+          <button
+            type="button"
+            class="mode-tab"
+            :class="{ active: accountMode === 'signin' }"
+            @click="selectAccountMode('signin')"
+          >
+            {{ t((s) => s.profile.signInTab) }}
+          </button>
+        </div>
+
+        <h2 class="section-title">{{ accountFormTitle }}</h2>
+
+        <p v-if="authStore.sessionExpired && isSignInMode" class="section-desc">
+          {{ t((s) => s.profile.sessionExpiredHint) }}
         </p>
 
-        <h2 class="section-title">{{ t((s) => s.profile.createAccountTitle) }}</h2>
-
-        <p v-if="authStore.pendingRegistration" class="section-desc">
+        <p v-else-if="authStore.pendingRegistration" class="section-desc">
           {{ t((s) => s.profile.pendingIntro) }}
           <strong>{{ authStore.pendingRegistration.email }}</strong>
           {{ t((s) => s.profile.pendingOutro) }}
@@ -409,7 +487,7 @@ const deleteAccountLabel = computed(() =>
         <span class="ident-label">{{ t((s) => s.profile.endgameNirvanaAccountLabel) }}</span>
         <div class="ident-stack">
           <span :class="authStore.isSignedIn ? 'status-positive' : 'status-warning'">
-            {{ authStore.isSignedIn ? authStore.userEmail : t((s) => s.profile.noAccount) }}
+            {{ accountStatusLabel }}
           </span>
           <span
             v-if="authStore.isSignedIn && !authStore.hasPasswordIdentity"
@@ -671,6 +749,40 @@ const deleteAccountLabel = computed(() =>
 .ident-provider {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+/* Matches SetupModal's create-account/sign-in tabs, so the two places that offer
+   the same choice look the same. */
+.mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  margin: 1.25rem 0 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mode-tab {
+  padding: 0.5rem 0.1rem;
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.mode-tab:hover {
+  color: var(--fg);
+}
+
+.mode-tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .auth-divider {

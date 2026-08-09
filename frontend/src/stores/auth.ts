@@ -57,8 +57,21 @@ function loadPendingRegistration(): PendingRegistration | null {
   }
 }
 
+// Remembers that this device was signed into a cloud account, so a session that
+// disappears without the user signing out here (a revoked refresh token — e.g.
+// another device signed out globally, or a password change) can be told apart
+// from a device that never had an account at all. Without it the app silently
+// degrades to local-only: it keeps recording attempts into the outbox that no
+// longer reach the server, while the profile page reassures the user that their
+// progress "is only stored locally" as if that were their own choice. Cleared
+// only by resetLocalStateAndRedirect (i.e. a deliberate sign-out or reset).
+const LAST_SIGNED_IN_EMAIL_STORAGE_KEY = 'lastSignedInEmail'
+
 export const useAuthStore = defineStore('auth', () => {
   const session = ref<Session | null>(null)
+  const lastSignedInEmail = ref<string | null>(
+    localStorage.getItem(LAST_SIGNED_IN_EMAIL_STORAGE_KEY),
+  )
   const pendingRegistration = ref<PendingRegistration | null>(loadPendingRegistration())
   const awaitingEmailConfirmation = ref<AwaitingEmailConfirmation | null>(null)
   const passwordRecoveryRequested = ref(false)
@@ -69,6 +82,23 @@ export const useAuthStore = defineStore('auth', () => {
   const isBackendConfigured = computed(() => supabase !== null)
   const isSignedIn = computed(() => session.value !== null)
   const userEmail = computed(() => session.value?.user.email ?? null)
+
+  // This device is signed into an account it never signed out of — the session was
+  // revoked or expired server-side. Nothing syncs in this state (performFlush bails
+  // without a session, and pullRemoteState never runs), so it has to be surfaced and
+  // fixed by signing in again, which then flushes the queued outbox and pulls.
+  const sessionExpired = computed(() => !isSignedIn.value && lastSignedInEmail.value !== null)
+
+  // Single writer for `session`, so every path that establishes one also records the
+  // account this device belongs to. Deliberately never *clears* the remembered email:
+  // losing the session is exactly the case sessionExpired has to stay able to detect.
+  function setSession(newSession: Session | null): void {
+    session.value = newSession
+    const email = newSession?.user.email
+    if (!email || email === lastSignedInEmail.value) return
+    lastSignedInEmail.value = email
+    localStorage.setItem(LAST_SIGNED_IN_EMAIL_STORAGE_KEY, email)
+  }
 
   // A Google-only account has no password, so offering "forgot password" or a
   // password change would send the user to a dead end.
@@ -101,10 +131,14 @@ export const useAuthStore = defineStore('auth', () => {
     const emailToken = captureEmailTokenFromUrl()
 
     const { data } = await supabase.auth.getSession()
-    session.value = data.session
+    setSession(data.session)
 
+    // SIGNED_OUT needs no branch of its own: supabase-js emits it both for our own
+    // signOut() (which wipes local state and reloads anyway) and for a refresh that
+    // failed against a revoked token, and setSession(null) turns the latter into
+    // sessionExpired — which is what the UI reacts to.
     supabase.auth.onAuthStateChange((event, newSession) => {
-      session.value = newSession
+      setSession(newSession)
 
       if (event === 'PASSWORD_RECOVERY') {
         passwordRecoveryRequested.value = true
@@ -292,6 +326,9 @@ export const useAuthStore = defineStore('auth', () => {
   // without a backend at all) — it's the general "reset my local progress" action.
   function resetLocalStateAndRedirect(): void {
     awaitingEmailConfirmation.value = null
+    // Leaving the account deliberately is the one case that must not read back as
+    // sessionExpired afterwards (localStorage.clear() drops the persisted copy).
+    lastSignedInEmail.value = null
     localStorage.clear()
     // The puzzle in progress lives in sessionStorage, which a same-tab redirect leaves
     // untouched — without this it would be restored on the way back in and handed to
@@ -300,8 +337,13 @@ export const useAuthStore = defineStore('auth', () => {
     window.location.href = window.location.origin + '/'
   }
 
+  // `scope: 'local'` revokes only this device's refresh token. supabase-js defaults
+  // to 'global', which revokes the user's refresh tokens on *every* device — the
+  // other devices then silently stop syncing (see sessionExpired) while still
+  // showing their last local Elo and history, which reads as the backend having
+  // gone quiet rather than as a sign-out nobody performed there.
   async function signOut(): Promise<void> {
-    if (supabase) await supabase.auth.signOut()
+    if (supabase) await supabase.auth.signOut({ scope: 'local' })
     resetLocalStateAndRedirect()
   }
 
@@ -313,7 +355,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function deleteAccount(): Promise<void> {
     if (supabase && isSignedIn.value) {
       await supabase.rpc('delete_own_account')
-      await supabase.auth.signOut()
+      // Local scope like signOut(), and here the deleted user's tokens are dead
+      // server-side regardless — a global revoke would just fail on a gone user.
+      await supabase.auth.signOut({ scope: 'local' })
     }
     resetLocalStateAndRedirect()
   }
@@ -348,6 +392,8 @@ export const useAuthStore = defineStore('auth', () => {
     isBackendConfigured,
     isSignedIn,
     userEmail,
+    lastSignedInEmail,
+    sessionExpired,
     init,
     signUp,
     retryPendingRegistration,

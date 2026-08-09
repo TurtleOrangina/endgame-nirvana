@@ -41,6 +41,20 @@ so a no-backend build keeps working exactly as before.
     first-time user sets `oauthOnboardingRequired`, which sends `SetupModal` to its `basics`
     step. Applying a null-username row through the normal "cloud wins" merge would blank out
     a real local profile.
+- **Sign-out is `scope: 'local'`** (`auth.ts`'s `signOut`/`deleteAccount`). supabase-js
+  defaults to `'global'`, which revokes the user's refresh tokens on _every_ device — the
+  others then silently fall back to local-only training (nothing pulls, the outbox just
+  grows) while still showing their last local Elo, which looks like the backend having gone
+  quiet rather than a sign-out. A session lost anyway (revoked elsewhere, password change)
+  is detected via the `lastSignedInEmail` localStorage key, which records that this device
+  was signed in and is cleared only by a deliberate sign-out/reset: `authStore.sessionExpired`
+  is "no session but this device had one", and `SettingsPage` says so instead of claiming the
+  user never made an account. Recovery is just signing in again — the `SIGNED_IN` pull flushes
+  whatever queued up while the device was signed out, then applies the cloud profile.
+- `SettingsPage`'s account section has **create-account/sign-in mode tabs** mirroring
+  `SetupModal`'s. Sign-in has to be reachable from both: the wizard only opens when there is
+  no local profile at all, so a device that has a profile but lost its session would otherwise
+  have no way in except a password-reset email.
 - `src/stores/sync.ts` — the write-behind outbox: batches `PendingAttempt[]` and a
   `profileDirty` flag into at most two requests (one `record_attempts` RPC, one `profiles`
   update) per 2s debounce window, flushing also on reconnect, tab-hide, and login.
