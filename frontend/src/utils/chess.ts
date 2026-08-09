@@ -84,13 +84,36 @@ export function isBareKingVsMajorPiece(fen: string, playerColor: PlayerColor): b
   return opponentIsBareKing && playerHasMajorPiece
 }
 
-// True for the two symmetric major-piece endgames that are dead drawn by themselves:
-// king and rook against king and rook, or king and queen against king and queen.
-export function isMirroredMajorPieceEndgame(fen: string): boolean {
+// True when the opponent could not checkmate even with the player's cooperation: their
+// material alone (bare king, king and a single minor piece) is insufficient to mate. The
+// player's own material is irrelevant to that, so it is stripped down to a bare king
+// before asking chess.js — a K+N vs K+R position is unmateable for the knight's side just
+// the same as K+N vs K.
+export function isOpponentUnableToCheckmate(fen: string, playerColor: PlayerColor): boolean {
+  const position = new Chess(fen)
+  const playerPieceColor = playerColor === 'white' ? 'w' : 'b'
+  for (const square of position.board().flat()) {
+    if (square && square.color === playerPieceColor && square.type !== 'k') {
+      position.remove(square.square)
+    }
+  }
+  return position.isInsufficientMaterial()
+}
+
+// True when both sides hold the same, pawnless material — e.g. rook and bishop against
+// rook and bishop, or bishop against bishop. Such a position is dead drawn by itself:
+// with no pawns there is nothing left to promote and neither side can make progress.
+// Bishops and knights are treated as one and the same minor piece, so rook and bishop
+// against rook and knight counts as mirrored too.
+export function isMirroredPawnlessEndgame(fen: string): boolean {
   const { white, black } = piecesByColor(fen)
-  const asSortedString = (pieces: string[]): string => [...pieces].sort().join('')
-  const side = asSortedString(white)
-  return side === asSortedString(black) && (side === 'kr' || side === 'kq')
+  if (white.includes('p') || black.includes('p')) return false
+  const asMaterialSignature = (pieces: string[]): string =>
+    pieces
+      .map((piece) => (piece === 'b' || piece === 'n' ? 'm' : piece))
+      .sort()
+      .join('')
+  return asMaterialSignature(white) === asMaterialSignature(black)
 }
 
 export function uciLineToPretty(fen: string, uciMoves: string[]): string[] {

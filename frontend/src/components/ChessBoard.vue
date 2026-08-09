@@ -23,7 +23,8 @@ import { evaluatePuzzleGoal } from '@/utils/puzzleEvaluation'
 import {
   hasPawnsOnBoard,
   isBareKingVsMajorPiece,
-  isMirroredMajorPieceEndgame,
+  isMirroredPawnlessEndgame,
+  isOpponentUnableToCheckmate,
   MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON,
   uciToMoveArgs,
 } from '@/utils/chess'
@@ -409,12 +410,14 @@ function countPieces(fen: string): number {
 // player is genuinely winning right now and this material edge wasn't already
 // present when the puzzle started (otherwise every move of an already-KQK/KRK
 // puzzle would instantly auto-solve).
-function shouldAutoSolve(
+function isAutoWin(
   fen: string,
+  goal: string | undefined,
   scoreCP: number | null,
   scoreMate: number | null,
   tablebaseCategory: TablebaseCategory | null,
 ): boolean {
+  if (goal !== 'win') return false
   const userElo = useUserProfileStore().profile?.endgameElo ?? 0
   if (userElo <= MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON) return false
   if (evaluatePuzzleGoal('win', scoreCP, scoreMate, tablebaseCategory).isOutsideGoal) return false
@@ -445,14 +448,22 @@ function isUneventfulContinuation(fen: string, uciMoves: string[]): boolean {
   return true
 }
 
-// Auto-solves as a draw once a draw-goal puzzle has been reduced to king and rook (or
-// king and queen) on both sides: the position holds itself, so playing on is shuffling.
+// Auto-solves as a draw once a draw-goal puzzle has reached material that can't be won
+// against: the computer left without the material to mate at all (see
+// isOpponentUnableToCheckmate), or the same pawnless material on both sides (see
+// isMirroredPawnlessEndgame). The position holds itself, so playing on is shuffling.
 // Held back while something is still about to happen — a capture would change the
 // material this verdict rests on, and a stalemate or 50-move end within the next two
 // half-moves is the actual end of the game, which the player should see played out.
-function shouldAutoDraw(fen: string, selection: MoveSelectionResult): boolean {
-  if (useExercisesStore().currentExercise?.expectedResult !== 'draw') return false
-  if (!isMirroredMajorPieceEndgame(fen)) return false
+function isAutoDraw(
+  fen: string,
+  goal: string | undefined,
+  selection: MoveSelectionResult,
+): boolean {
+  if (goal !== 'draw') return false
+  if (!isOpponentUnableToCheckmate(fen, playerColor) && !isMirroredPawnlessEndgame(fen)) {
+    return false
+  }
   const { isOutsideGoal } = evaluatePuzzleGoal(
     'draw',
     selection.scoreCP,
@@ -1135,12 +1146,13 @@ async function triggerEngineTurn(gen: number, isPremove = false): Promise<void> 
     return
   }
 
-  if (shouldAutoSolve(chess.fen(), scoreCP, scoreMate, tbData?.category ?? null)) {
+  const goal = useExercisesStore().currentExercise?.expectedResult
+  if (isAutoWin(chess.fen(), goal, scoreCP, scoreMate, tbData?.category ?? null)) {
     endGame('win')
     return
   }
 
-  if (shouldAutoDraw(chess.fen(), selection)) {
+  if (isAutoDraw(chess.fen(), goal, selection)) {
     endGame('draw')
     return
   }
@@ -1341,7 +1353,7 @@ function onKeyDown(e: KeyboardEvent): void {
 
 // Captured on entering analysis so leaveAnalysisMode can recognize a game that had
 // already ended even though the final position isn't terminal (an auto-solved win, see
-// shouldAutoSolve). updateGameEndDisplay can't re-derive that from the FEN alone, and
+// isAutoWin). updateGameEndDisplay can't re-derive that from the FEN alone, and
 // re-running the engine there would end — and celebrate — the game a second time.
 let gameOverEntryBeforeAnalysis: { index: number; fen: string } | null = null
 
