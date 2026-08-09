@@ -219,6 +219,15 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // Stores and composables read localStorage/window at module scope, so under the
+  // default Node environment they throw while being imported — the failure lands on
+  // the whole test file, before any assertion runs. Files that drive Node APIs instead
+  // of the app (the defensive-resistance measurement) opt back out with a
+  // `@vitest-environment node` docblock.
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+  },
   server: {
     headers: crossOriginIsolationHeaders,
   },
