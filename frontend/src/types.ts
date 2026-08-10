@@ -91,6 +91,7 @@ export interface EngineLine {
 // doneness check that ended up smallest. Debug logging only.
 export type DtdReason =
   | 'tablebase dtm'
+  | 'tablebase min(dtm,dtz)'
   | 'engine mate'
   | 'tablebase ordering'
   | `LineProbe ${string}`

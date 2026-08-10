@@ -45,5 +45,7 @@ __screenshots__/
 public/engines/
 
 
-# Defensive-resistance measurement (src/measurements/defensive-resistance/)
+# Measurements (src/measurements/): the tablebase cache, and the engine-playout per-ply
+# dump — far too large and churn-prone to commit, unlike its puzzle set and baseline YAMLs
 .tablebase-cache/
+engine-playout-detail*.json

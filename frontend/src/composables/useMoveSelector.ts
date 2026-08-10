@@ -1,5 +1,5 @@
 import { watch } from 'vue'
-import { Chess, type Move } from 'chess.js'
+import { Chess } from 'chess.js'
 import type {
   DtdReason,
   EngineLine,
@@ -15,9 +15,17 @@ import {
   useStockfishEngine,
   type StockfishEngine,
 } from '@/composables/useStockfishEngine'
-import { useLichessTablebase, type OutcomeRetainingResult } from '@/composables/useLichessTablebase'
+import {
+  decisiveDistance,
+  decisiveDistanceScale,
+  isZeroingAsDecisiveAsMate,
+  useLichessTablebase,
+  type OutcomeRetainingResult,
+} from '@/composables/useLichessTablebase'
 import { scoreToOutcome } from '@/utils/puzzleEvaluation'
+import { engineMaintainFraction } from '@/utils/maintainFraction'
 import { EPSILON, weightedSample } from '@/utils/weightedSample'
+import { positionKey } from '@/utils/repetitionLoops'
 import {
   hasPawnsOnBoard,
   isBareKingVsMajorPiece,
@@ -26,8 +34,8 @@ import {
 } from '@/utils/chess'
 
 // How sharply the sampling peaks on the highest-weighted candidates (see weightedSample).
-// Lives here rather than at the call site so the defensive-resistance measurement
-// (src/__tests__/defensive-resistance/) can drive the selector exactly as the board does.
+// Lives here rather than at the call site so the engine-playout measurement
+// (src/measurements/engine-playout/) can drive the selector exactly as the board does.
 export const TEMPERATURE = 0.2 // the engine defends accurately
 // Pawnless positions have far fewer structural traps, so more variance is accepted to
 // see more variations — mildly on the first try, generously on retries
@@ -45,8 +53,10 @@ const MATE_ONLY_FALLBACK_CP = 10_000
 // halves a move's weight — the resistance signal lives in the score gaps between
 // candidates, not in the (uniformly huge) absolute evaluations
 const CP_FALLBACK_HALVING_GAP = 100
-// How strongly the delayer gates the trickster when their weights are multiplied together
-const DELAYER_EXPONENT = 2
+// How strongly the delayer gates the trickster when their weights are multiplied together.
+// Overridable per SelectorTuning, because it is the dial between the two halves of the
+// selection: raising it buys resistance at the cost of traps, lowering it the reverse.
+const DEFAULT_DELAYER_EXPONENT = 2
 // Halfmoves without a pawn move or capture before the engine starts favoring zeroing
 // moves in drawn positions, instead of milking the full 50-move rule (e.g. shuffling for
 // 49 moves between each pawn push in a wrong-bishop fortress)
@@ -62,10 +72,6 @@ const DONE_MATERIAL_DEFICIT = 2
 // done when at least one of its remaining positions shows the deficit (the engine's PV
 // is often too short to hold a late promotion for the full window)
 const DEFICIT_WINDOW_LENGTH = 4
-// Weight of a non-maintaining move whose engine refutation is an immediate checkmate or
-// an immediate capture no maintaining line allows — a blunder that obvious barely dilutes
-// the position's trickiness, since even a careless user would spot the refutation
-const OBVIOUS_BLUNDER_WEIGHT = 0.1
 
 export interface MoveSelectionOptions {
   temperature: number
@@ -103,8 +109,22 @@ function asPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`.padStart(6)
 }
 
+// A candidate the Trickster did not probe has no fault potential to report
+function faultPotential(survival: number | null | undefined): string {
+  return survival === null || survival === undefined ? 'n/a'.padStart(6) : asPercent(1 - survival)
+}
+
 function dtdWithReason(candidate: EngineLineWithDTD): string {
-  return `dtd=${candidate.dtd ?? '?'}${candidate.dtdReason ? ` [${candidate.dtdReason}]` : ''}`
+  // A tablebase-seeded dtd carries a sub-ply tiebreak, so it isn't always a whole number
+  const dtd = candidate.dtd === null ? '?' : Number(candidate.dtd.toFixed(2))
+  return `dtd=${dtd}${candidate.dtdReason ? ` [${candidate.dtdReason}]` : ''}`
+}
+
+// The tablebase distance metric shared by the dtd seed and the ordering clamp: both must
+// rank candidates identically, or the clamp undoes the seed. See `decisiveDistance`.
+interface DecisiveDistanceMetric {
+  zeroingIsDecisive: boolean
+  scale: number
 }
 
 // How a set of candidates should be sampled, plus what to log about each one
@@ -114,11 +134,55 @@ interface CandidateSamplingPlan {
   describeCandidate: (index: number) => string
 }
 
-// The engine is injectable so the defensive-resistance measurement
-// (src/measurements/defensive-resistance/) can drive this exact selection logic from
+/**
+ * Variations of the selection the measurements play out as alternative defenders, so a
+ * design question ("is the Trickster worth its search time?") is answered by a measured
+ * comparison rather than by argument. The app always runs `PRODUCTION_TUNING`.
+ */
+export interface SelectorTuning {
+  // With the Trickster off, a lost position is sampled by the delayer alone and a drawn
+  // one uniformly over the outcome-retaining moves
+  trickster: boolean
+  // How the delayer weights candidates when they don't all have a trustworthy dtd:
+  // `score-gap` by the engine's centipawn gaps, `multipv-rank` by the lines' own ordering
+  delayerFallback: 'score-gap' | 'multipv-rank'
+  // With this off, a tablebase-seeded dtd is the plain distance to mate. On, a position where
+  // a zeroing move is as decisive as mate is seeded by whichever comes first instead, so a
+  // defense that delays mate by handing over its last piece stops looking resistant.
+  zeroingDistance: boolean
+  // The power the delayer's weight is raised to before the Trickster's is multiplied in, so
+  // it sets which of the two decides a lost position. See combineDelayerAndTrickster.
+  delayerExponent: number
+  // How the Trickster combines a line's per-position survival fractions: `product` down the
+  // line, or their `geometric-mean`, which stops a line's weight depending on how many
+  // positions its PV was long enough to probe. See getSamplingWeightsTrickster.
+  tricksterAggregation: 'product' | 'geometric-mean'
+  // Probe only this many candidates, the ones the delayer rates highest, giving each a
+  // proportionally longer search so the Trickster costs the same. null probes them all.
+  tricksterProbedCandidates: number | null
+}
+
+export const PRODUCTION_TUNING: SelectorTuning = {
+  trickster: true,
+  delayerFallback: 'score-gap',
+  zeroingDistance: true,
+  delayerExponent: DEFAULT_DELAYER_EXPONENT,
+  tricksterAggregation: 'product',
+  // Left at null: focusing the probes looked like a clear win (+1.43±0.64 delay moves on
+  // win goals) until the same measurement was re-run with this very setting and reproduced
+  // most of the gain, which makes it run-to-run drift rather than the change. See the
+  // engine-playout README.
+  tricksterProbedCandidates: null,
+}
+
+// The engine is injectable so the engine-playout measurement
+// (src/measurements/engine-playout/) can drive this exact selection logic from
 // Node, where there is no Web Worker to run the WASM build in. The app always uses the
 // shared browser instance.
-export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) {
+export function useMoveSelector(
+  engine: StockfishEngine = useStockfishEngine(),
+  tuning: SelectorTuning = PRODUCTION_TUNING,
+) {
   const tablebase = useLichessTablebase()
 
   // Safety net: if the engine hangs (e.g. worker crash), resolve with null after a
@@ -141,77 +205,6 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
         })
       }
     })
-  }
-
-  // Weighted fraction of the user's legal moves that keep the outcome best play would
-  // achieve, estimated from a wide (MultiPV 64) shallow engine search. With so few pieces
-  // on the board this covers essentially every legal move. When the user is winning, only
-  // moves that keep the win maintain — e.g. blundering into stalemate drops it; when
-  // drawing, anything that isn't lost does. Moves are weighted by how likely the user is
-  // to consider them: non-maintaining moves refuted by an obvious reply count far less,
-  // while maintaining moves that are checks or captures count more — the fewer legal
-  // checks/captures there are to sift through, the easier the move is to spot.
-  function engineMaintainFraction(
-    probedFen: string,
-    lines: EngineLine[],
-    userOutcomeWithBestPlay: GameResult,
-  ): number {
-    if (lines.length === 0) return 1
-    const maintainsOutcome = (line: EngineLine): boolean => {
-      const outcome = scoreToOutcome(line.scoreCP, line.scoreMate)
-      return userOutcomeWithBestPlay === 'win' ? outcome === 'win' : outcome !== 'loss'
-    }
-
-    const isCheck = (move: Move): boolean => move.san.includes('+') || move.san.includes('#')
-    const isCapture = (move: Move): boolean => move.isCapture() || move.isEnPassant()
-    const legalMoves = new Chess(probedFen).moves({ verbose: true })
-    const legalCheckCount = legalMoves.filter(isCheck).length
-    const legalCaptureCount = legalMoves.filter(isCapture).length
-    const maintainingLineResponses = new Set(
-      lines
-        .filter(maintainsOutcome)
-        .flatMap((line) => (line.moves[1] !== undefined ? [line.moves[1]] : [])),
-    )
-
-    // Checks and captures are what the user calculates first, so a maintaining one is
-    // easier to find than a quiet move — the more so the fewer there are to sift through
-    const maintainingMoveWeight = (uci: string): number => {
-      const move = legalMoves.find((m) => m.from + m.to + (m.promotion ?? '') === uci)
-      if (!move) return 1
-      let weight = 1
-      if (isCheck(move)) weight = Math.max(weight, 1 + 1 / legalCheckCount)
-      if (isCapture(move)) weight = Math.max(weight, 1 + 1 / legalCaptureCount)
-      return weight
-    }
-
-    // A faulty move refuted by an immediate mate, or by an immediate capture that no
-    // maintaining line concedes anyway, is a one-move blunder the user would hardly play
-    const faultyMoveWeight = (line: EngineLine): number => {
-      const responseUci = line.moves[1]
-      if (responseUci === undefined) return 1
-      const chess = new Chess(probedFen)
-      let response: Move
-      try {
-        chess.move(uciToMoveArgs(line.moves[0]!))
-        response = chess.move(uciToMoveArgs(responseUci))
-      } catch {
-        return 1
-      }
-      const isMateBlunder = chess.isCheckmate()
-      const isMaterialBlunder = isCapture(response) && !maintainingLineResponses.has(responseUci)
-      return isMateBlunder || isMaterialBlunder ? OBVIOUS_BLUNDER_WEIGHT : 1
-    }
-
-    let maintainingWeight = 0
-    let totalWeight = 0
-    for (const line of lines) {
-      const weight = maintainsOutcome(line)
-        ? maintainingMoveWeight(line.moves[0]!)
-        : faultyMoveWeight(line)
-      if (maintainsOutcome(line)) maintainingWeight += weight
-      totalWeight += weight
-    }
-    return Math.max(0.35, maintainingWeight / totalWeight)
   }
 
   // Positions along the line where the user is to move — these are what the user would
@@ -281,12 +274,6 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
       }
     }
     return null
-  }
-
-  // Position identity for repetition detection: piece placement, side to move, castling
-  // rights and en passant square — the move counters don't matter, as in the threefold rule
-  function positionKey(fen: string): string {
-    return fen.split(' ').slice(0, 4).join(' ')
   }
 
   function collectSeenPositionKeys(startFen: string, moves: string[]): Set<string> {
@@ -375,19 +362,27 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
     line: EngineLine,
     currentFen: string,
     tbOutcome: OutcomeRetainingResult | null,
+    metric: DecisiveDistanceMetric,
     playerColor: PlayerColor,
     startingStableMaterialBalance: number | null,
   ): { dtd: number | null; dtdReason: DtdReason | null } {
     let dtd: number | null = null
     let dtdReason: DtdReason | null = null
 
-    // Seed from the tablebase's distance to mate (dtm is in half-moves from the position
-    // after the move, so the move itself adds one). Drawn moves report dtm 0 — there is
-    // no mate distance, so they must not seed anything.
+    // Seed from the tablebase's distance to resolution (in half-moves from the position
+    // after the move, so the move itself adds one). Where a zeroing move is as decisive as
+    // mate this is min(dtm, dtz) rather than dtm alone: there is no point delaying mate
+    // along a route that hands over the last defending piece first. Drawn moves report dtm
+    // 0 — there is no distance, so they must not seed anything.
     const tbMove = tbOutcome?.result.moves.find((m) => m.uci === line.moves[0])
-    if (tbMove && tbMove.dtm !== null && tbMove.dtm !== 0) {
-      dtd = Math.abs(tbMove.dtm) + 1
-      dtdReason = 'tablebase dtm'
+    if (tbMove) {
+      const tbDistance = decisiveDistance(tbMove, metric.zeroingIsDecisive, metric.scale)
+      if (tbDistance !== null) {
+        dtd = tbDistance + 1
+        const zeroingCounted =
+          metric.zeroingIsDecisive && (tbMove.precise_dtz ?? tbMove.dtz) !== null
+        dtdReason = zeroingCounted ? 'tablebase min(dtm,dtz)' : 'tablebase dtm'
+      }
     }
 
     // Engine mate scores are in full moves
@@ -450,52 +445,58 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
     return { dtd, dtdReason }
   }
 
-  // A candidate with a larger tablebase mate distance is the more resistant defense, no
-  // matter what the line probes found: each candidate's PV picks an arbitrary winning
-  // plan for the user (fast promotion in one line, a slow pawn hunt in another), so probe
-  // distances from different PVs are not comparable and must not undercut the tablebase's
-  // exact resistance ordering. And since the extra resistance a higher-dtm defense buys
-  // happens before the collapse into a done position (the mopping-up tail after the
-  // collapse is much alike across lines), the dtd gap should be at least the dtm gap —
-  // not merely non-negative. Candidates are walked in groups of ascending dtm, flooring
-  // every dtd at the best dtd-relative-to-dtm shift seen among faster-mate groups plus
-  // the candidate's own dtm; within a group (equal dtm) the probes' ordering is kept.
+  // A candidate the tablebase says resolves later is the more resistant defense, no matter
+  // what the line probes found: each candidate's PV picks an arbitrary winning plan for the
+  // user (fast promotion in one line, a slow pawn hunt in another), so probe distances from
+  // different PVs are not comparable and must not undercut the tablebase's exact resistance
+  // ordering. And since the extra resistance a slower-resolving defense buys happens before
+  // the collapse into a done position (the mopping-up tail after the collapse is much alike
+  // across lines), the dtd gap should be at least the tablebase gap — not merely
+  // non-negative. Candidates are walked in groups of ascending tablebase distance, flooring
+  // every dtd at the best dtd-relative-to-distance shift seen among sooner-resolving groups
+  // plus the candidate's own distance; within a group the probes' ordering is kept.
+  //
+  // The metric must be the same one that seeded the dtds — clamping a min(dtm, dtz) seed
+  // against a dtm-only ordering would floor the piece-dropping defenses straight back up.
   function clampDistancesToTablebaseOrdering(
     candidates: EngineLineWithDTD[],
     tbOutcome: OutcomeRetainingResult | null,
+    metric: DecisiveDistanceMetric,
   ): void {
     if (!tbOutcome) return
-    const dtmOf = (line: EngineLineWithDTD): number | null => {
+    const distanceOf = (line: EngineLineWithDTD): number | null => {
       const tbMove = tbOutcome.result.moves.find((m) => m.uci === line.moves[0])
-      return tbMove && tbMove.dtm !== null && tbMove.dtm !== 0 ? Math.abs(tbMove.dtm) : null
+      return tbMove ? decisiveDistance(tbMove, metric.zeroingIsDecisive, metric.scale) : null
     }
     const ranked = candidates
       .flatMap((candidate) => {
-        const dtm = dtmOf(candidate)
-        return dtm !== null && candidate.dtd !== null ? [{ candidate, dtm }] : []
+        const distance = distanceOf(candidate)
+        return distance !== null && candidate.dtd !== null ? [{ candidate, distance }] : []
       })
-      .sort((a, b) => a.dtm - b.dtm)
+      .sort((a, b) => a.distance - b.distance)
 
-    let maxDtdMinusDtmOfFasterMates = -Infinity
+    let maxDtdMinusDistanceOfSoonerGroups = -Infinity
     let index = 0
     while (index < ranked.length) {
-      const groupDtm = ranked[index]!.dtm
+      const groupDistance = ranked[index]!.distance
       const group: EngineLineWithDTD[] = []
-      while (index < ranked.length && ranked[index]!.dtm === groupDtm) {
+      while (index < ranked.length && ranked[index]!.distance === groupDistance) {
         group.push(ranked[index]!.candidate)
         index++
       }
       const dtdFloor =
-        maxDtdMinusDtmOfFasterMates === -Infinity ? 0 : maxDtdMinusDtmOfFasterMates + groupDtm
+        maxDtdMinusDistanceOfSoonerGroups === -Infinity
+          ? 0
+          : maxDtdMinusDistanceOfSoonerGroups + groupDistance
       for (const candidate of group) {
         if (candidate.dtd! < dtdFloor) {
           candidate.dtd = dtdFloor
           candidate.dtdReason = 'tablebase ordering'
         }
       }
-      maxDtdMinusDtmOfFasterMates = Math.max(
-        maxDtdMinusDtmOfFasterMates,
-        ...group.map((c) => c.dtd! - groupDtm),
+      maxDtdMinusDistanceOfSoonerGroups = Math.max(
+        maxDtdMinusDistanceOfSoonerGroups,
+        ...group.map((c) => c.dtd! - groupDistance),
       )
     }
   }
@@ -516,7 +517,7 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
   // low no matter how tricky) and the trickster as a likelihood update — when the delayer
   // is near-uniform its factor is near-constant and the trickster decides the ordering.
   function combineDelayerAndTrickster(delayer: number[], trickster: number[]): number[] {
-    const products = delayer.map((weight, i) => weight ** DELAYER_EXPONENT * trickster[i]!)
+    const products = delayer.map((weight, i) => weight ** tuning.delayerExponent * trickster[i]!)
     if (products.every((product) => product === 0)) return delayer
     return normalizeWeights(products)
   }
@@ -532,7 +533,21 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
       )
     }
     // No trustworthy dtd for every line (typically an engine-only loss without a mate
-    // score) — fall back to the engine's scores: it minimizes |scoreCP| when losing, and
+    // score). The `multipv-rank` fallback then reads only the lines' ordering: the engine
+    // sorts them best-first anyway, and in a hopeless position the scores behind that
+    // ordering swing between searches while the ordering itself is comparatively steady.
+    if (tuning.delayerFallback === 'multipv-rank') {
+      const byLineOrder = [...candidates.keys()].sort(
+        (a, b) => candidates[a]!.multipvIndex - candidates[b]!.multipvIndex,
+      )
+      const rankWeights = candidates.map(() => 0)
+      for (const [rank, candidateIndex] of byLineOrder.entries()) {
+        rankWeights[candidateIndex] = 2 ** -rank
+      }
+      return normalizeWeights(rankWeights)
+    }
+
+    // Otherwise fall back to the engine's scores: it minimizes |scoreCP| when losing, and
     // the cp ordering tracks the tablebase's distance-to-mate ordering well. Weight by
     // the gap to the least-bad candidate, since the absolute evaluations are all equally
     // hopeless and only the differences carry the resistance signal.
@@ -545,16 +560,31 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
     )
   }
 
-  // Weight each line by how easy it would be for the user to drop the ball along it. For
-  // every probed user-to-move position we estimate the fraction of moves that hold the
-  // best outcome; the product over the line approximates the chance a careless user
-  // survives it, and rare survival means high training value.
+  /**
+   * Weight each line by how easy it would be for the user to drop the ball along it. For
+   * every probed user-to-move position we estimate the fraction of moves that hold the best
+   * outcome; combining them over the line approximates the chance a careless user survives
+   * it, and rare survival means high training value.
+   *
+   * How they combine matters more than it looks. A line is probed at up to LINE_PROBING
+   * positions, but only as far as its PV reaches — and PV lengths across a MultiPV search
+   * vary with how deep each line happened to be searched, from a couple of half-moves to
+   * twenty. Multiplying the fractions therefore compares a product of five numbers below one
+   * against a product of one, and the line with the longer PV looks trickier for no reason
+   * that has anything to do with chess. The `geometric-mean` aggregation divides that out by
+   * taking the per-probe average survival instead, so lines are comparable however far their
+   * PVs happened to run.
+   */
   async function getSamplingWeightsTrickster(
     candidates: EngineLineWithDTD[],
     currentFen: string,
     outcomeWithBestUserPlay: GameResult,
     shouldAbort: (() => boolean) | undefined,
-  ): Promise<{ weights: number[]; lineProducts: number[] }> {
+    // How worth probing each candidate is — the delayer's weights, where there are any. A
+    // candidate the delayer rates near zero cannot be sampled whatever the Trickster finds,
+    // so probing it spends search on an answer that can't matter.
+    probePriority: number[] | null = null,
+  ): Promise<{ weights: number[]; lineProducts: (number | null)[] }> {
     // outcomeWithBestUserPlay is from the computer's perspective; the probed positions
     // are user-to-move, so flip it to know what the user has to maintain there
     const userOutcomeWithBestPlay: GameResult =
@@ -568,28 +598,73 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
       fen: string
     }
 
-    const probes: Probe[] = candidates.flatMap((line, lineIndex) =>
-      collectUserToMovePositions(line, currentFen).map((fen) => ({ lineIndex, fen })),
+    // Probing fewer candidates buys a longer search on each of the ones that are left, at
+    // the same total cost — breadth traded for resolution. The probe is a 20 ms MultiPV-64
+    // sweep, which is a thin basis for classifying every legal move, so the trade is worth
+    // testing wherever the delayer has already ruled some candidates out.
+    const positionsPerCandidate = candidates.map((line) =>
+      collectUserToMovePositions(line, currentFen),
     )
+    const probedIndices =
+      tuning.tricksterProbedCandidates === null || probePriority === null
+        ? [...candidates.keys()]
+        : [...candidates.keys()]
+            .sort((a, b) => probePriority[b]! - probePriority[a]!)
+            .slice(0, tuning.tricksterProbedCandidates)
+    const isProbed = new Set(probedIndices)
+
+    const probes: Probe[] = probedIndices.flatMap((lineIndex) =>
+      positionsPerCandidate[lineIndex]!.map((fen) => ({ lineIndex, fen })),
+    )
+    // Budget is per *probe*, not per candidate: a line is probed as many times as its PV is
+    // long enough to allow, so dropping candidates does not free a proportional share of the
+    // search. Scaling by the probe counts is what actually holds the total cost fixed.
+    const allProbeCount = positionsPerCandidate.reduce((sum, list) => sum + list.length, 0)
+    const probeThinkingTimeMs =
+      probes.length === 0
+        ? PROBE_THINKING_TIME_MS
+        : Math.round(PROBE_THINKING_TIME_MS * (allProbeCount / probes.length))
 
     // Engine probes run strictly one after another: the shared worker only supports a
     // single search, and Stockfish already saturates multiple cores on its own
     const lineProducts = candidates.map(() => 1)
+    const probeCounts = candidates.map(() => 0)
+    // Survival aggregated the way this tuning asks for, which is what the weights and the
+    // logged fault potential both read
+    const survivalOf = (lineIndex: number): number => {
+      const product = lineProducts[lineIndex]!
+      const count = probeCounts[lineIndex]!
+      if (tuning.tricksterAggregation === 'product' || count === 0) return product
+      return product ** (1 / count)
+    }
+    // An unprobed candidate carries no evidence either way, so it takes the mean of the
+    // probed weights — a neutral factor, leaving the delayer to decide it alone
+    const weightsFrom = (): number[] => {
+      const weightOf = (i: number): number => 1 / Math.min(1, Math.max(EPSILON, survivalOf(i)))
+      const probedMean =
+        probedIndices.reduce((sum, i) => sum + weightOf(i), 0) / probedIndices.length
+      return normalizeWeights(
+        candidates.map((_, i) => (isProbed.has(i) ? weightOf(i) : probedMean)),
+      )
+    }
+    const survivals = (): (number | null)[] =>
+      candidates.map((_, i) => (isProbed.has(i) ? survivalOf(i) : null))
+
     for (const probe of probes) {
       if (shouldAbort?.()) {
-        return { weights: normalizeWeights(candidates.map(() => 1)), lineProducts }
+        return { weights: normalizeWeights(candidates.map(() => 1)), lineProducts: survivals() }
       }
 
       const fraction = await engine
-        .getBestMoves(probe.fen, [], PROBE_THINKING_TIME_MS, PROBE_MULTIPV)
+        .getBestMoves(probe.fen, [], probeThinkingTimeMs, PROBE_MULTIPV)
         .then((lines) => engineMaintainFraction(probe.fen, lines, userOutcomeWithBestPlay))
       lineProducts[probe.lineIndex] = lineProducts[probe.lineIndex]! * fraction
+      probeCounts[probe.lineIndex] = probeCounts[probe.lineIndex]! + 1
     }
 
-    const weights = normalizeWeights(
-      lineProducts.map((product) => 1 / Math.min(1, Math.max(EPSILON, product))),
-    )
-    return { weights, lineProducts }
+    // Reported as survival, not as the raw product, so the logged fault potential says the
+    // same thing the weights were built from
+    return { weights: weightsFrom(), lineProducts: survivals() }
   }
 
   async function getDrawSamplingPlan(
@@ -599,13 +674,12 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
     isStalledDraw: boolean,
     shouldAbort: (() => boolean) | undefined,
   ): Promise<CandidateSamplingPlan> {
-    const trickster = await getSamplingWeightsTrickster(
-      candidatesWithDtd,
-      currentFen,
-      'draw',
-      shouldAbort,
-    )
-    let weights = trickster.weights
+    // Holding a draw offers no distance to maximize, so without the trickster every
+    // outcome-retaining move is equally good and the sampling is uniform
+    const trickster = tuning.trickster
+      ? await getSamplingWeightsTrickster(candidatesWithDtd, currentFen, 'draw', shouldAbort)
+      : null
+    let weights = trickster?.weights ?? normalizeWeights(candidatesWithDtd.map(() => 1))
     const zeroingFlags = candidatesWithDtd.map((c) => isZeroingMove(currentFen, c.moves[0]!))
     let zeroingBoost = 1
     if (isStalledDraw) {
@@ -620,7 +694,7 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
       header: `Move candidates (draw, halfmove clock ${halfmoveClock}) ${currentFen}:`,
       weights,
       describeCandidate: (i) =>
-        `(fault_potential=${asPercent(1 - trickster.lineProducts[i]!)}, ` +
+        `(fault_potential=${trickster ? faultPotential(trickster.lineProducts[i]) : 'n/a'.padStart(6)}, ` +
         `${dtdWithReason(candidatesWithDtd[i]!)})` +
         (zeroingFlags[i] ? ` zeroing_boost=x${zeroingBoost.toFixed(0)}` : ''),
     }
@@ -634,9 +708,16 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
     const delayerWeights = getSamplingWeightsDelayer(candidatesWithDtd)
     // In a pawnless lost position the trickster adds nothing but noise — pure piece
     // play offers no structural traps worth steering into, so the delayer decides alone
-    const trickster = hasPawnsOnBoard(currentFen)
-      ? await getSamplingWeightsTrickster(candidatesWithDtd, currentFen, 'loss', shouldAbort)
-      : null
+    const trickster =
+      tuning.trickster && hasPawnsOnBoard(currentFen)
+        ? await getSamplingWeightsTrickster(
+            candidatesWithDtd,
+            currentFen,
+            'loss',
+            shouldAbort,
+            delayerWeights,
+          )
+        : null
     return {
       header: `Move candidates (loss) ${currentFen}:`,
       weights: trickster
@@ -645,7 +726,7 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
       describeCandidate: (i) =>
         `w_delayer=${asPercent(delayerWeights[i]!)} ` +
         `w_trickster=${trickster ? asPercent(trickster.weights[i]!) : 'n/a'.padStart(6)} ` +
-        `(fault_potential=${trickster ? asPercent(1 - trickster.lineProducts[i]!) : 'n/a'.padStart(6)}, ` +
+        `(fault_potential=${trickster ? faultPotential(trickster.lineProducts[i]) : 'n/a'.padStart(6)}, ` +
         `${dtdWithReason(candidatesWithDtd[i]!)})`,
     }
   }
@@ -810,17 +891,28 @@ export function useMoveSelector(engine: StockfishEngine = useStockfishEngine()) 
       lines[0]!.moves,
       options.playerColor,
     )
+    // Only meaningful when the user is winning: the tablebase distances below measure how
+    // long the user's conversion takes, and a drawn position has no conversion to time. The
+    // scale spans the whole known-move set so every consumer keys the same move identically.
+    const metric: DecisiveDistanceMetric = {
+      zeroingIsDecisive:
+        tuning.zeroingDistance &&
+        outcomeWithBestUserPlay === 'loss' &&
+        isZeroingAsDecisiveAsMate(currentFen, options.playerColor),
+      scale: tbOutcome ? decisiveDistanceScale(tbOutcome.result.moves) : 1,
+    }
     const candidatesWithDtd: EngineLineWithDTD[] = candidates.map((line) => ({
       ...line,
       ...computeDistanceToDone(
         line,
         currentFen,
         tbOutcome,
+        metric,
         options.playerColor,
         startingStableMaterialBalance,
       ),
     }))
-    clampDistancesToTablebaseOrdering(candidatesWithDtd, tbOutcome)
+    clampDistancesToTablebaseOrdering(candidatesWithDtd, tbOutcome, metric)
 
     const plan =
       outcomeWithBestUserPlay === 'draw'

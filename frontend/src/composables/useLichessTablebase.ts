@@ -1,4 +1,10 @@
-import type { GameResult, TablebaseCategory, TablebaseMove, TablebaseResult } from '@/types'
+import type {
+  GameResult,
+  PlayerColor,
+  TablebaseCategory,
+  TablebaseMove,
+  TablebaseResult,
+} from '@/types'
 import { materialByColor } from '@/utils/chess'
 
 const TABLEBASE_URL = 'https://tablebase.lichess.ovh/standard'
@@ -68,32 +74,102 @@ export function categoryToOutcome(cat: TablebaseCategory): GameResult | null {
   }
 }
 
+// Ranks (1-8, from white's side) that hold at least one pawn of the given colour
+function pawnRanks(fen: string, color: PlayerColor): number[] {
+  const pawn = color === 'white' ? 'P' : 'p'
+  return fen
+    .split(' ')[0]!
+    .split('/')
+    .flatMap((row, index) => (row.includes(pawn) ? [8 - index] : []))
+}
+
+export function opposingColor(color: PlayerColor): PlayerColor {
+  return color === 'white' ? 'black' : 'white'
+}
+
 /**
  * Returns true when a zeroing move (DTZ) is as tactically decisive as a mating
- * sequence (DTM), making max(DTZ, DTM) a better primary metric than DTM alone.
+ * sequence (DTM), making the whichever-comes-first distance a better primary metric
+ * than DTM alone (see `decisiveDistance`).
  *
  * Only call this on positions where one side is winning with best play; the
- * result is meaningless for positions that are drawn with best play.
+ * result is meaningless for positions that are drawn with best play, which is why
+ * a null `winningColor` returns false.
+ *
+ * True in two shapes:
+ *  - **Pawnless**: winning one of the defending pieces typically leaves a trivial
+ *    position (queen vs rook, rook+bishop vs rook, rook vs bishop), so there is no
+ *    point delaying mate by a route that drops a piece on the way.
+ *  - **Only the winner has pawns, all of them one step from promoting**: a promotion
+ *    that preserves the win resolves the position about as surely as a capture does
+ *    (rook+pawn vs rook, say). A pawn further back does not qualify — DTZ would then
+ *    count a push that merely resets the clock instead of ending anything.
  *
  * Returns false when:
- *  - Either side has pawns — a pawn push resets DTZ without ending the game
  *  - The weaker side has only a king — nothing to capture, so DTZ means losing
  *    our own pieces rather than winning theirs
  *  - The material imbalance exceeds 6 points — the winning side already has an
  *    overwhelming advantage, so capturing more seems pointless
  */
-export function isDtzAsValuableAsDtm(fen: string): boolean {
-  const boardPart = fen.split(' ')[0]!
-  const pieces = boardPart.replace(/\d/g, '').replace(/\//g, '')
-
-  if (pieces.includes('P') || pieces.includes('p')) return false
+export function isZeroingAsDecisiveAsMate(fen: string, winningColor: PlayerColor | null): boolean {
+  if (winningColor === null) return false
 
   const { white: whiteMaterial, black: blackMaterial } = materialByColor(fen)
-
   if (whiteMaterial === 0 || blackMaterial === 0) return false
   if (Math.abs(whiteMaterial - blackMaterial) > 6) return false
 
-  return true
+  if (pawnRanks(fen, opposingColor(winningColor)).length > 0) return false
+  const winnerPawnRanks = pawnRanks(fen, winningColor)
+  if (winnerPawnRanks.length === 0) return true
+
+  const promotionRank = winningColor === 'white' ? 7 : 2
+  return winnerPawnRanks.length === 1 && winnerPawnRanks[0] === promotionRank
+}
+
+function zeroingDistance(move: TablebaseMove): number | null {
+  return move.precise_dtz ?? move.dtz
+}
+
+/**
+ * Scales the tiebreak term of `decisiveDistance` for one tablebase response.
+ *
+ * The tiebreak must stay below half a ply so it can never reorder two moves whose
+ * leading distance already differs. Dividing by twice the response's own largest
+ * distance guarantees that while keeping the term as wide as the bound allows — a
+ * fixed divisor large enough for the longest tablebase mates (~550 plies) would
+ * squash the tiebreak down to noise in the ordinary positions this app trains.
+ *
+ * Must be computed once over the full known-move set, so every consumer keys the same
+ * move identically; distances are therefore only comparable within a single position.
+ */
+export function decisiveDistanceScale(moves: TablebaseMove[]): number {
+  const largestDistance = moves.reduce(
+    (largest, move) =>
+      Math.max(largest, Math.abs(move.dtm ?? 0), Math.abs(zeroingDistance(move) ?? 0)),
+    0,
+  )
+  return 2 * largestDistance + 1
+}
+
+/**
+ * How far this move leaves the position from resolving, in half-moves: the mate distance,
+ * or — where zeroing is as decisive as mate — whichever of mate and the next zeroing move
+ * comes first, with the other one as a sub-ply tiebreak. The winning side minimizes this,
+ * a tenacious defender maximizes it.
+ *
+ * Null for drawn moves (dtm 0 or absent): they have no distance to anything.
+ */
+export function decisiveDistance(
+  move: TablebaseMove,
+  zeroingIsDecisive: boolean,
+  scale: number,
+): number | null {
+  if (move.dtm === null || move.dtm === 0) return null
+  const mateDistance = Math.abs(move.dtm)
+  const rawZeroingDistance = zeroingDistance(move)
+  if (!zeroingIsDecisive || rawZeroingDistance === null) return mateDistance
+  const zeroing = Math.abs(rawZeroingDistance)
+  return Math.min(zeroing, mateDistance) + Math.max(zeroing, mateDistance) / scale
 }
 
 // Move categories are from the opponent's perspective in the resulting position.
@@ -105,10 +181,16 @@ export function isDtzAsValuableAsDtm(fen: string): boolean {
 // they resolve the position immediately. Lichess reports DTZ/DTM/DTC with sign already
 // adjusted for outcome, so descending order (b − a) works correctly for both cases.
 //
-// When isDtzValuable: zeroing first, then max(DTM, DTZ) as the combined metric — capturing
-// the enemy piece resolves the position as surely as mate, so whichever path ends things
-// soonest should lead.
-function compareMoves(a: TablebaseMove, b: TablebaseMove, isDtzValuable: boolean): number {
+// When zeroingIsDecisive: zeroing first, then `decisiveDistance` as the combined metric —
+// capturing the enemy piece (or promoting) resolves the position as surely as mate, so
+// whichever path ends things soonest should lead. Unlike the raw DTZ/DTM fields that metric
+// is unsigned, so the direction has to be applied explicitly here.
+function compareMoves(
+  a: TablebaseMove,
+  b: TablebaseMove,
+  zeroingIsDecisive: boolean,
+  scale: number,
+): number {
   const rankDiff = CATEGORY_RANK[a.category] - CATEGORY_RANK[b.category]
   if (rankDiff !== 0) return rankDiff
   const weAreWinning = CATEGORY_RANK[a.category] < CATEGORY_RANK['draw']
@@ -116,10 +198,12 @@ function compareMoves(a: TablebaseMove, b: TablebaseMove, isDtzValuable: boolean
   const bEndsGame = b.checkmate || b.stalemate || b.insufficient_material
   if (aEndsGame !== bEndsGame) return weAreWinning === aEndsGame ? -1 : 1
 
-  if (isDtzValuable && a.dtm !== null && b.dtm !== null && a.dtz !== null && b.dtz !== null) {
+  if (zeroingIsDecisive && a.dtm !== null && b.dtm !== null && a.dtz !== null && b.dtz !== null) {
     if (a.zeroing !== b.zeroing) return weAreWinning === a.zeroing ? -1 : 1
-    const effectiveDiff = Math.max(b.dtm, b.dtz) - Math.max(a.dtm, a.dtz)
-    if (effectiveDiff !== 0) return effectiveDiff
+    const aDistance = decisiveDistance(a, true, scale) ?? 0
+    const bDistance = decisiveDistance(b, true, scale) ?? 0
+    const distanceDiff = weAreWinning ? aDistance - bDistance : bDistance - aDistance
+    if (distanceDiff !== 0) return distanceDiff
     return (b.dtc ?? -Infinity) - (a.dtc ?? -Infinity)
   }
 
@@ -212,8 +296,21 @@ export function useLichessTablebase() {
       const moves = allMoves.filter((m) => m.category !== 'unknown')
       if (moves.length === 0) return null
 
-      const isDtzValuable = isDtzAsValuableAsDtm(fen)
-      moves.sort((a, b) => compareMoves(a, b, isDtzValuable))
+      // Which side is winning decides whether pawns disqualify the zeroing metric, so it
+      // has to come from the verdict rather than from the board. An 'unknown' or drawn
+      // category yields no winner, and the metric is meaningless there anyway.
+      const sideToMove: PlayerColor = fen.split(' ')[1] === 'b' ? 'black' : 'white'
+      const moverOutcome = categoryToOutcome(flipCategory(category))
+      const winningColor =
+        moverOutcome === 'win'
+          ? sideToMove
+          : moverOutcome === 'loss'
+            ? opposingColor(sideToMove)
+            : null
+
+      const zeroingIsDecisive = isZeroingAsDecisiveAsMate(fen, winningColor)
+      const scale = decisiveDistanceScale(moves)
+      moves.sort((a, b) => compareMoves(a, b, zeroingIsDecisive, scale))
 
       return { category, moves }
     } catch {

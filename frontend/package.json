@@ -13,7 +13,7 @@
     "lint:oxlint": "vp lint . --fix",
     "lint:eslint": "vp lint . --fix",
     "format": "vp fmt src/",
-    "measure-defensive-resistance": "node scripts/measure-defensive-resistance.mjs"
+    "measure-engine-playout": "node scripts/measure-engine-playout.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.1",

@@ -233,11 +233,23 @@ Do NOT use pnpm/yarn/npm. Use vp instead to install dependencies, format files, 
 
 ```sh
 CI=true vp install              # install / sync dependencies
+vp test --run                   # tests — must be the project-local vp, see the note below
 CI=true vp install <pkg>        # add a new dependency (acts as vp add)
 CI=true vp install -D <pkg>     # add a dev dependency
 vp check --fix                  # format + lint + type-check, auto-fix where possible
 vp run type-check               # vue-tsc: also type-checks .vue templates (vp check does not!)
 ```
+
+**Tests only run under the project-local `vp`.** The container also has a global vite-plus
+(`npm install -g vite-plus` in the Dockerfile, so `vp` exists before dependencies are
+installed); its bundled Vitest resolves a test's environment package next to itself, so
+`jsdom` — a devDependency of _this_ project — is not found and every test file fails before
+it runs, with errors that look like broken test code (`Cannot find package 'jsdom'`, or
+`Cannot read properties of undefined (reading 'config')`). The pnpm-generated local shim
+exports the `NODE_PATH` that makes resolution work, and the Dockerfile puts
+`/workspace/frontend/node_modules/.bin` first on `PATH` so plain `vp` is that shim. In a
+container built before that change, run `./node_modules/.bin/vp test` explicitly. Everything
+else (`vp check`, `vp fmt`, `vp lint`) only uses bundled binaries and works from either.
 
 ## Debugging with Stockfish
 
@@ -248,26 +260,31 @@ A CLI wrapper around the bundled engine is available for ad-hoc position analysi
 (printf 'uci\nsetoption name MultiPV value 5\nposition fen 8/3k4/7p/2KP3P/8/8/8/8 b - - 3 2\ngo movetime 400\n'; sleep 1) | node scripts/stockfish-cli.mjs | tail -n 6
 ```
 
-## Measuring defensive resistance
+## Measuring the move selector
 
-`src/measurements/defensive-resistance/` quantifies how much resistance `useMoveSelector`
-actually gives a perfect user, so the engine can be tuned without guessing. It plays
-puzzles out to mate — tablebase-optimal moves for the user, the real selection logic for
-the defender — and reports how much of the available distance-to-mate the defense gave
-up, overall and per move. See the README there; run it with
-`node scripts/measure-defensive-resistance.mjs`.
+`src/measurements/` holds the measurement of `useMoveSelector`, so the opponent can be
+tuned without guessing. It runs either as a gated Vitest suite or as a CLI script, on the
+engine adapters in `src/measurements/shared/`.
 
-It runs either as a Vitest suite (`RUN_RESISTANCE_MEASUREMENT=1 vp test --run
-defensiveResistance`, gated so a normal `vp test` skips it) or as the CLI script; both
-drive the same `measurementHarness.ts`.
+- **`engine-playout/`** — plays a fixed 120-puzzle sample against a strong Syzygy-backed
+  engine standing in for the user, and scores how long the defense lasted and how tricky it
+  made the user's positions. Draw goals and positions with more than 7 men are included.
+  Run: `node scripts/measure-engine-playout.mjs` or
+  `RUN_PLAYOUT_MEASUREMENT=1 vp test --run enginePlayout`. A full run costs about an hour of
+  saturated CPU and its committed baseline/puzzle-set YAMLs must not be casually
+  regenerated → **read [`src/measurements/engine-playout/CLAUDE.md`](src/measurements/engine-playout/CLAUDE.md)
+  before working in there.**
 
 It is Node-side tooling that imports app modules, so it has its own TypeScript project
 (`tsconfig.measurements.json`, referenced from `tsconfig.json`) — `tsconfig.app.json`
 excludes it, since app code must not see Node's globals. Nothing in `src/` imports it,
-so it never reaches the bundle. Two seams in the app exist for it and should stay:
-`useMoveSelector(engine?)` takes an injectable engine (Node has no Web Worker to run the
-WASM build in), and `src/utils/uciSearchCollector.ts` holds the UCI `info`-line parsing
-shared by the WASM worker and the native binary.
+so it never reaches the bundle. Four seams in the app exist for it and should stay:
+`useMoveSelector(engine?)` takes an injectable engine (Node has no Web Worker),
+`src/utils/uciSearchCollector.ts` holds the UCI `info`-line parsing shared by the WASM
+worker and the native binary, `src/utils/autoResolve.ts` holds the auto-win/auto-draw
+verdicts as pure functions (`ChessBoard.vue` passes its own state in as context), and
+`src/utils/maintainFraction.ts` holds the Trickster's move-weighting so the measured
+trickiness is computed by the very function the selector optimizes.
 
 ## Architecture
 

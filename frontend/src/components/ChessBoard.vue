@@ -20,14 +20,8 @@ import {
   type MoveSelectionResult,
 } from '@/composables/useMoveSelector'
 import { evaluatePuzzleGoal } from '@/utils/puzzleEvaluation'
-import {
-  hasPawnsOnBoard,
-  isBareKingVsMajorPiece,
-  isMirroredPawnlessEndgame,
-  isOpponentUnableToCheckmate,
-  MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON,
-  uciToMoveArgs,
-} from '@/utils/chess'
+import { isAutoDraw, isAutoWin, type AutoResolveContext } from '@/utils/autoResolve'
+import { hasPawnsOnBoard } from '@/utils/chess'
 import { useUserProfileStore } from '@/stores/userProfile'
 import { useExercisesStore } from '@/stores/exercises'
 import type { BoardHistoryEntry, BoardSnapshot } from '@/utils/trainingSessionState'
@@ -35,7 +29,6 @@ import type {
   GameResult,
   PlayerColor,
   EngineLine,
-  TablebaseCategory,
   TablebaseResult,
   AnalysisSettings,
 } from '@/types'
@@ -405,78 +398,13 @@ function countPieces(fen: string): number {
   return (fen.split(' ')[0] ?? '').split('').filter((c) => /[a-zA-Z]/.test(c)).length
 }
 
-// Auto-solves as a win once the position has been reduced to a trivial mating
-// material advantage (bare king vs. at least one queen or rook), but only if the
-// player is genuinely winning right now and this material edge wasn't already
-// present when the puzzle started (otherwise every move of an already-KQK/KRK
-// puzzle would instantly auto-solve).
-function isAutoWin(
-  fen: string,
-  goal: string | undefined,
-  scoreCP: number | null,
-  scoreMate: number | null,
-  tablebaseCategory: TablebaseCategory | null,
-): boolean {
-  if (goal !== 'win') return false
-  const userElo = useUserProfileStore().profile?.endgameElo ?? 0
-  if (userElo <= MIN_ELO_MAJOR_PIECE_VS_KING_IS_WON) return false
-  if (evaluatePuzzleGoal('win', scoreCP, scoreMate, tablebaseCategory).isOutsideGoal) return false
-  const initialFen = historyEntries.value[0]?.fen
-  if (initialFen && isBareKingVsMajorPiece(initialFen, playerColor)) return false
-  return isBareKingVsMajorPiece(fen, playerColor)
-}
-
-// How far into the computer's intended line the draw auto-solve looks for a reason to
-// keep playing: the move it is about to play and the user reply the engine predicts.
-const AUTO_DRAW_LOOKAHEAD_HALFMOVES = 2
-
-// Whether the given half-moves change nothing that's worth watching on the board: no
-// capture and no game end along the way. An illegal (e.g. truncated) line counts as
-// eventful, so a line that can't be verified never triggers the auto-solve.
-function isUneventfulContinuation(fen: string, uciMoves: string[]): boolean {
-  const chess = new Chess(fen)
-  for (const uci of uciMoves.slice(0, AUTO_DRAW_LOOKAHEAD_HALFMOVES)) {
-    let move: Move
-    try {
-      move = chess.move(uciToMoveArgs(uci))
-    } catch {
-      return false
-    }
-    if (move.isCapture() || move.isEnPassant()) return false
-    if (chess.isGameOver()) return false
+// The board state the auto-solve verdicts (src/utils/autoResolve.ts) depend on
+function autoResolveContext(): AutoResolveContext {
+  return {
+    playerColor,
+    initialFen: historyEntries.value[0]?.fen,
+    userElo: useUserProfileStore().profile?.endgameElo ?? 0,
   }
-  return true
-}
-
-// Auto-solves as a draw once a draw-goal puzzle has reached material that can't be won
-// against: the computer left without the material to mate at all (see
-// isOpponentUnableToCheckmate), or the same pawnless material on both sides (see
-// isMirroredPawnlessEndgame). The position holds itself, so playing on is shuffling.
-// Held back while something is still about to happen — a capture would change the
-// material this verdict rests on, and a stalemate or 50-move end within the next two
-// half-moves is the actual end of the game, which the player should see played out.
-function isAutoDraw(
-  fen: string,
-  goal: string | undefined,
-  selection: MoveSelectionResult,
-): boolean {
-  if (goal !== 'draw') return false
-  if (!isOpponentUnableToCheckmate(fen, playerColor) && !isMirroredPawnlessEndgame(fen)) {
-    return false
-  }
-  const { isOutsideGoal } = evaluatePuzzleGoal(
-    'draw',
-    selection.scoreCP,
-    selection.scoreMate,
-    selection.tbData?.category ?? null,
-  )
-  if (isOutsideGoal) return false
-
-  // The line of the move the computer is actually about to play — a capture in it is one
-  // the player would see land on the board, not a hypothetical from some other candidate
-  const intendedMoves = selection.selectedLine?.moves ?? []
-  if (intendedMoves.length === 0) return false
-  return isUneventfulContinuation(fen, intendedMoves)
 }
 
 function shouldQueryTablebase(fen: string): boolean {
@@ -1147,12 +1075,13 @@ async function triggerEngineTurn(gen: number, isPremove = false): Promise<void> 
   }
 
   const goal = useExercisesStore().currentExercise?.expectedResult
-  if (isAutoWin(chess.fen(), goal, scoreCP, scoreMate, tbData?.category ?? null)) {
+  const context = autoResolveContext()
+  if (isAutoWin(chess.fen(), goal, scoreCP, scoreMate, tbData?.category ?? null, context)) {
     endGame('win')
     return
   }
 
-  if (isAutoDraw(chess.fen(), goal, selection)) {
+  if (isAutoDraw(chess.fen(), goal, selection, context)) {
     endGame('draw')
     return
   }

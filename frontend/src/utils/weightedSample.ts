@@ -1,5 +1,11 @@
 export const EPSILON = 1e-6
 
+// The lowest temperature the sampling distinguishes. At it, the heaviest candidate is
+// picked outright and only candidates the weighting rates exactly equal are still sampled
+// between — which is what the engine-playout measurement drives the selector at, to take its
+// own dice out of a comparison. The app itself never uses it.
+export const MIN_TEMPERATURE = 0.01
+
 // Temperature-controlled weighted random sampling: weights are normalized, raised to
 // 1/temperature (lower temperature → distribution peaks harder on the heaviest
 // candidates), renormalized, and then one candidate is drawn.
@@ -22,7 +28,7 @@ export function weightedSample(
 export function applyTemperatureToWeights(weights: number[], temperature: number): number[] {
   const total = weights.reduce((s, w) => s + w, 0)
   const normalized_weights = weights.map((w) => w / total)
-  const exponent = 1 / Math.max(0.01, temperature) // Lower cap temperature to avoid division by zero
+  const exponent = 1 / Math.max(MIN_TEMPERATURE, temperature) // capped to avoid division by zero
   const scaled_weights = normalized_weights.map((w) => w ** exponent)
   const scaled_total = scaled_weights.reduce((s, w) => s + w, 0)
   return scaled_weights.map((w) => w / scaled_total)

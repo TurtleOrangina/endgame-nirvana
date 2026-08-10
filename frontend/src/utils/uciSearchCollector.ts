@@ -3,7 +3,7 @@ import type { EngineLine } from '@/types'
 // Accumulates the `info` lines of a single UCI search into the per-multipv `EngineLine`s
 // the app works with, and turns the closing `bestmove` line into the final result.
 // Shared by the browser engine (`useStockfishEngine`, driving the Stockfish WASM worker)
-// and the native-binary driver the defensive-resistance measurement runs on, so both
+// and the native-binary driver the engine-playout measurement runs on, so both
 // read the engine's output through exactly the same rules.
 export interface UciSearchCollector {
   // The updated lines when this info line changed them (for progress reporting),
