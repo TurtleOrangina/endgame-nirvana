@@ -38,7 +38,13 @@ Puzzle data (`exercises.json`) is produced by a separate scraping project, not p
   routing with real paths (e.g. `/profile`, `/training/<fen>`) rather than hash routing,
   so the Cloudflare `assets` config must keep
   `not_found_handling: "single-page-application"` so unmatched paths fall back to
-  `index.html` instead of 404ing.
+  `index.html` instead of 404ing. Despite the "Pages" name above, this deploys through
+  **Workers Builds** (`npx wrangler versions upload`, root directory `/frontend`) as a
+  Worker with static assets — so it is `wrangler.jsonc` that owns routing, and a
+  Pages-style `functions/` directory would be ignored. The Worker itself
+  (`frontend/preview/`, `main` in `wrangler.jsonc`) exists only to give shared puzzle
+  links an Open Graph preview with the position rendered as an image — see
+  `frontend/CLAUDE.md`.
 
 ## Code quality principles
 

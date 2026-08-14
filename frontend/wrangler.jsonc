@@ -1,9 +1,19 @@
 {
   "name": "endgame-nirvana",
   "compatibility_date": "2026-07-03",
+  // The Worker exists only to give shared puzzle links a preview (see preview/worker.ts);
+  // everything else is served straight from ./dist by the assets binding.
+  "main": "./preview/worker.ts",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
+    // Without this, the SPA fallback answers /train and /analysis from index.html at the
+    // assets layer and the Worker never sees them — which is precisely where the preview
+    // tags have to be injected. Listing paths rather than `true` keeps every other
+    // request (the app's own assets, the engine, the puzzle catalog) on the asset path,
+    // never invoking the Worker at all.
+    "run_worker_first": ["/train", "/analysis", "/og/board.png"],
   },
   "routes": [
     {

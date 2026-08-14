@@ -1,0 +1,18 @@
+// TSConfig for preview/ — the link-preview Worker and the modules behind it. It runs in
+// the Workers runtime, so it gets neither the DOM lib (tsconfig.app.json) nor Node's
+// types (tsconfig.node.json), only @cloudflare/workers-types.
+{
+  "extends": "@vue/tsconfig/tsconfig.json",
+  "include": ["preview/**/*"],
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["@cloudflare/workers-types"],
+
+    // Same extra safety for array and object lookups the app project enables.
+    "noUncheckedIndexedAccess": true,
+
+    // `vue-tsc --build` produces a .tsbuildinfo file for incremental type-checking.
+    // Specified here to keep it out of the root directory.
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo"
+  }
+}

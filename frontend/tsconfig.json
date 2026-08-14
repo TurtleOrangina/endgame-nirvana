@@ -9,6 +9,9 @@
     },
     {
       "path": "./tsconfig.measurements.json"
+    },
+    {
+      "path": "./tsconfig.worker.json"
     }
   ]
 }

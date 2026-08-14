@@ -13,7 +13,8 @@
     "lint:oxlint": "vp lint . --fix",
     "lint:eslint": "vp lint . --fix",
     "format": "vp fmt src/",
-    "measure-engine-playout": "node scripts/measure-engine-playout.mjs"
+    "measure-engine-playout": "node scripts/measure-engine-playout.mjs",
+    "build-og-sprites": "node scripts/build-og-sprites.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.1",
@@ -26,6 +27,7 @@
     "vue": "^3.5.39"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260813.1",
     "@tsconfig/node24": "^24.0.4",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^24.13.3",
@@ -34,6 +36,7 @@
     "jiti": "^2.7.0",
     "jsdom": "^30.0.1",
     "npm-run-all2": "^9.0.2",
+    "sharp": "^0.35.3",
     "typescript": "~6.0.3",
     "vite": "catalog:",
     "vite-plugin-vue-devtools": "^8.1.5",
@@ -44,5 +47,5 @@
   "engines": {
     "node": "^20.19.0 || ^22.18.0 || >=24.11.0"
   },
-  "packageManager": "pnpm@11.20.0"
+  "packageManager": "pnpm@11.21.0"
 }

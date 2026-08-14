@@ -196,6 +196,56 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
   installable as a PWA (`public/manifest.webmanifest`) and serves cached assets
   stale-while-revalidate so the app keeps working offline.
 
+## Link previews (`preview/`)
+
+A shared puzzle link (`https://endgame-nirvana.space/train?puzzle=<fen>`, pasted into
+Discord, Slack, WhatsApp, …) previews with the position drawn as an image. Crawlers do
+not run JavaScript, so none of this can come from the SPA — a **Cloudflare Worker**
+(`preview/worker.ts`, wired up as `main` in `wrangler.jsonc`) sits in front of the static
+assets and handles it at the edge.
+
+- **The deployment is a Worker with static assets, not Cloudflare Pages** — despite what
+  the dashboard's "Workers & Pages" heading suggests. It builds through Workers Builds
+  (`npx wrangler versions upload`, root directory `/frontend`), so a Pages-style
+  `functions/` directory is ignored entirely; routing lives in `wrangler.jsonc`.
+- Only `/train`, `/analysis` and `/og/board.png` reach the Worker
+  (`assets.run_worker_first` in `wrangler.jsonc`); every other request is served straight
+  from `dist/` and never invokes it. Without that list the SPA fallback would answer
+  `/train` from `index.html` at the assets layer and the Worker would never see it.
+- For `/train`/`/analysis` with a valid `?puzzle=`, the Worker fetches `index.html`
+  through the `ASSETS` binding and splices Open Graph tags into its `<head>`
+  (`preview/preview.ts`). The document is otherwise untouched, so browsers boot the app
+  exactly as before — but note it **re-asserts the COOP/COEP headers** the multi-threaded
+  engine needs, which are also declared in `public/_headers` and `vite.config.ts`.
+- Pages without a puzzle of their own (the site root, `/progress`, `/browse`, `/about`,
+  and `/train` before a puzzle is picked) preview from a **default block of tags in
+  `index.html`**, marked with a `link-preview:default` comment. Its `og:image` is the
+  board renderer's own URL for one of our puzzles rather than a committed picture, so the
+  front page is drawn by the same code as everything else. `injectPreviewTags` strips that
+  whole block before adding the puzzle's — two `og:title`s in one document and it is the
+  platform's guess which one wins.
+- The title is the side to play and nothing else ("Black to play"). Everything the preview
+  says is derived from the fen: the Worker has no access to the puzzle catalog, so it
+  knows nothing about categories or goals. The copy is English-only — a crawler carries no
+  locale hint, so `t()` has nothing to work with.
+- `/og/board.png?puzzle=<fen>` renders the position (`preview/boardImage.ts`), oriented
+  with the **side to move at the bottom**, in the app's default appearance (Wood board,
+  Maestro pieces). Responses are stored in the edge cache, so a given position is only
+  ever rendered once.
+- The runtime has no image decoder, so the board texture (a webp) and the pieces (SVGs)
+  are pre-rasterized into raw pixels by `scripts/build-og-sprites.mjs`
+  (`vp run build-og-sprites`, needs the `sharp` devDependency) and committed as
+  `public/og-sprites.bin`, which the Worker fetches through the `ASSETS` binding and
+  composites by hand. **Re-run it after changing the preview's board theme or piece
+  set** — the blob is the only copy of them the Worker has.
+- `preview/png.ts` writes PNGs _uncompressed_ (deflate stored blocks). This is deliberate:
+  the free plan allows 10ms of CPU per request, which is not enough to deflate a megabyte
+  of board texture, but is plenty for the framing and checksums. The cost is a ~790 KB
+  image per position, paid once thanks to the cache.
+- `preview/` has its own TypeScript project (`tsconfig.worker.json`, referenced from
+  `tsconfig.json`): it runs in neither the DOM nor Node, so it gets
+  `@cloudflare/workers-types` and nothing else.
+
 ## Localization (i18n)
 
 The app is bilingual (English/German) via a hand-rolled composable — **no vue-i18n**.
