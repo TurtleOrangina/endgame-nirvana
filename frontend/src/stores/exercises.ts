@@ -187,7 +187,7 @@ function buildExercises(puzzles: PuzzleRow[]): Exercise[] {
 
 // Puzzle Elo is learned server-side but only reaches clients through the bundled
 // exercises.json catalog, refreshed periodically via backend/scripts/export_puzzles.mjs.
-function eloOf(exercise: Exercise): number {
+export function eloOf(exercise: Exercise): number {
   return parseInt(exercise.difficulty)
 }
 

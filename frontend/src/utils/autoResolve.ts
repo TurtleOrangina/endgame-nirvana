@@ -18,6 +18,7 @@ export interface AutoResolveContext {
   // The position the puzzle started from — a material edge that was there all along is
   // not an edge the player just won
   initialFen: string | undefined
+  // Falls back to the puzzle's own Elo when the player has no profile yet (guest mode)
   userElo: number
 }
 

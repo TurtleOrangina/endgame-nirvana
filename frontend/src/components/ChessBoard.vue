@@ -23,7 +23,7 @@ import { evaluatePuzzleGoal } from '@/utils/puzzleEvaluation'
 import { isAutoDraw, isAutoWin, type AutoResolveContext } from '@/utils/autoResolve'
 import { hasPawnsOnBoard } from '@/utils/chess'
 import { useUserProfileStore } from '@/stores/userProfile'
-import { useExercisesStore } from '@/stores/exercises'
+import { eloOf, useExercisesStore } from '@/stores/exercises'
 import type { BoardHistoryEntry, BoardSnapshot } from '@/utils/trainingSessionState'
 import type {
   GameResult,
@@ -398,12 +398,22 @@ function countPieces(fen: string): number {
   return (fen.split(' ')[0] ?? '').split('').filter((c) => /[a-zA-Z]/.test(c)).length
 }
 
+// A guest playing a shared link has no profile and therefore no Elo yet, so the puzzle's
+// own Elo stands in for it: someone who has worked a 1900 puzzle down to K+R vs K has
+// shown the technique the auto-solve assumes, someone on an 850 one hasn't.
+function effectiveUserElo(): number {
+  const userElo = useUserProfileStore().profile?.endgameElo
+  if (userElo !== undefined) return userElo
+  const exercise = useExercisesStore().currentExercise
+  return exercise ? eloOf(exercise) : 0
+}
+
 // The board state the auto-solve verdicts (src/utils/autoResolve.ts) depend on
 function autoResolveContext(): AutoResolveContext {
   return {
     playerColor,
     initialFen: historyEntries.value[0]?.fen,
-    userElo: useUserProfileStore().profile?.endgameElo ?? 0,
+    userElo: effectiveUserElo(),
   }
 }
 
