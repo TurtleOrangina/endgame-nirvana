@@ -15,7 +15,14 @@ function measurement(
   return {
     puzzle: { fen, categoryPath: '/x', goal, difficulty: 1500, men: 5 },
     playouts: [
-      { endReason: 'auto-win', delayMoves, trickiness, plies: [], moveTimesMs: [moveTimeMs] },
+      {
+        endReason: 'auto-win',
+        delayMoves,
+        trickiness,
+        plies: [],
+        moveTimesMs: [moveTimeMs],
+        tablebaseLookupsPerMove: [1],
+      },
     ],
   }
 }
@@ -62,7 +69,7 @@ describe('formatInFlightComparison', () => {
     )
     expect(line).toBe(
       'In flight comparison vs baseline: delay(wins): +1.3, trickiness(wins): -0.02, ' +
-        'delay(draws): -0.3, trickiness(draws): +0.05, thinking_time: +0ms',
+        'trickiness(draws): +0.05, thinking_time: +0ms',
     )
   })
 
@@ -81,8 +88,16 @@ describe('formatInFlightComparison', () => {
       baseline([['a', 10, 0.4, 700]]),
       plain,
     )
-    expect(line).toContain('delay(draws): n/a')
     expect(line).toContain('trickiness(draws): n/a')
+  })
+
+  test('never reports delay on draw goals — a longer hold is not a better defense', () => {
+    const line = formatInFlightComparison(
+      [measurement('b', 'draw', 30, 0.65, 700)],
+      baseline([['b', 20, 0.6, 700]]),
+      plain,
+    )
+    expect(line).not.toContain('delay(draws)')
   })
 
   test('ignores puzzles the baseline does not contain', () => {

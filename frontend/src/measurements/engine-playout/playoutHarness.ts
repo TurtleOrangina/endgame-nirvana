@@ -4,7 +4,11 @@ import {
   createWasmStockfishEngine,
   defaultWasmEngineThreads,
 } from '@/measurements/shared/wasmStockfishEngine'
-import { createTablebaseClient, type TablebaseClient } from '@/measurements/shared/tablebaseClient'
+import {
+  createOfflineTablebaseClient,
+  createTablebaseClient,
+  type TablebaseClient,
+} from '@/measurements/shared/tablebaseClient'
 import { NATIVE_STOCKFISH_PATH } from '@/measurements/shared/enginePaths'
 import {
   assertStrongEngineLoadedSyzygy,
@@ -18,21 +22,12 @@ import type { PuzzleMeasurement } from './report'
 
 export const PUZZLE_SET_FILE = 'engine-playout-puzzles.yaml'
 
-// Each defender writes its own baseline and detail file, so runs never overwrite each
-// other and can be diffed puzzle by puzzle
+// Each defender writes its own baseline and run-detail file, so runs never overwrite each
+// other and can be diffed puzzle by puzzle. The shipped selector takes the unsuffixed name.
 const FILE_SUFFIX: Record<DefenderKind, string> = {
   'move-selector': '',
-  multipv1: '-multipv1',
-  'multipv1-tablebase': '-multipv1-tablebase',
-  'no-trickster': '-no-trickster',
-  'multipv-rank-delayer': '-multipv-rank-delayer',
-  'with-variance': '-with-variance',
-  'trickster-led': '-trickster-led',
-  'trickster-geomean': '-trickster-geomean',
-  'trickster-focused': '-trickster-focused',
-  'trickster-unfocused': '-trickster-unfocused',
-  'zeroing-distance': '-zeroing-distance',
-  'dtm-only-distance': '-dtm-only-distance',
+  'engine-best-move': '-engine-best-move',
+  offline: '-offline',
 }
 
 export function baselineFileFor(defenderKind: DefenderKind): string {
@@ -43,10 +38,6 @@ export function baselineFileFor(defenderKind: DefenderKind): string {
 // so the in-flight comparison is always against the move selector's baseline, not against
 // the running defender's own previous run, which would only report engine noise
 export const COMPARISON_DEFENDER: DefenderKind = 'move-selector'
-
-export function detailFileFor(defenderKind: DefenderKind): string {
-  return `engine-playout-detail${FILE_SUFFIX[defenderKind]}.json`
-}
 
 export const DEFENDER_KINDS = Object.keys(FILE_SUFFIX) as DefenderKind[]
 
@@ -59,6 +50,8 @@ export interface PlayoutMeasurementConfig {
   playoutsPerPuzzle: number
   seed: number
   resample: boolean
+  /** Pick up where an interrupted run of the same configuration left off — see playoutRunStore */
+  resumePreviousRun: boolean
   defenderKind: DefenderKind
   minTablebaseRequestIntervalMs?: number
   /**
@@ -72,10 +65,11 @@ export interface PlayoutMeasurementConfig {
 
 export const DEFAULT_CONFIG = {
   binaryPath: NATIVE_STOCKFISH_PATH,
-  puzzleCount: 120,
-  playoutsPerPuzzle: 2,
+  puzzleCount: 64,
+  playoutsPerPuzzle: 6,
   seed: 20_260_809,
   resample: false,
+  resumePreviousRun: false,
   defenderKind: 'move-selector',
 } as const satisfies Partial<PlayoutMeasurementConfig>
 
@@ -88,7 +82,16 @@ export interface StrongEngineFailure {
 
 export interface PlayoutMeasurementRunner {
   puzzles: PlayoutPuzzle[]
-  measurePuzzle(puzzle: PlayoutPuzzle, index: number): Promise<PuzzleMeasurement>
+  /**
+   * Plays the puzzle out, skipping the first `alreadyMeasured` playouts — that is what a
+   * top-up run leans on to add playouts to a puzzle an earlier run already measured. The
+   * returned measurement holds only the playouts measured now.
+   */
+  measurePuzzle(
+    puzzle: PlayoutPuzzle,
+    index: number,
+    alreadyMeasured?: number,
+  ): Promise<PuzzleMeasurement>
   tablebase: TablebaseClient
   /** Confirms the user engine really has its tablebases before the run commits an hour to it */
   verifyStrongEngine(): Promise<void>
@@ -98,10 +101,15 @@ export interface PlayoutMeasurementRunner {
 }
 
 export function createPlayoutRunner(config: PlayoutMeasurementConfig): PlayoutMeasurementRunner {
-  const tablebase = createTablebaseClient(
-    path.join(config.frontendRoot, '.tablebase-cache'),
-    config.minTablebaseRequestIntervalMs,
-  )
+  // `offline` is the shipped selector cut off from the tablebase, so it gets a
+  // client that fails every request instead of one backed by the cache and the network
+  const tablebase =
+    config.defenderKind === 'offline'
+      ? createOfflineTablebaseClient()
+      : createTablebaseClient(
+          path.join(config.frontendRoot, '.tablebase-cache'),
+          config.minTablebaseRequestIntervalMs,
+        )
   tablebase.installFetchInterception()
 
   const defenderEngine = createWasmStockfishEngine(config.frontendRoot, config.defenderThreads)
@@ -117,9 +125,15 @@ export function createPlayoutRunner(config: PlayoutMeasurementConfig): PlayoutMe
     config.resample,
   )
 
-  async function measurePuzzle(puzzle: PlayoutPuzzle, index: number): Promise<PuzzleMeasurement> {
+  async function measurePuzzle(
+    puzzle: PlayoutPuzzle,
+    index: number,
+    alreadyMeasured = 0,
+  ): Promise<PuzzleMeasurement> {
     const playouts: PuzzleMeasurement['playouts'] = []
-    for (let run = 0; run < config.playoutsPerPuzzle; run++) {
+    // Starting at the run number the earlier playouts stopped at, so a top-up seeds its
+    // playouts differently from the ones already on disk rather than repeating their sampling
+    for (let run = alreadyMeasured; run < config.playoutsPerPuzzle; run++) {
       // The selector samples its moves with Math.random; seeding it per playout keeps the
       // run reproducible while still letting the two playouts of a puzzle differ
       const originalRandom = Math.random
@@ -148,9 +162,10 @@ export function createPlayoutRunner(config: PlayoutMeasurementConfig): PlayoutMe
           delayMoves: trimmed.delayMoves,
           trickiness: trimmed.trickiness,
           plies: trimmed.plies,
-          // Every move the defender produced, not just the ones the trimming kept — this
-          // measures what the opponent costs to run, which the trimming has no say in
+          // Every move the defender produced, not just the ones the trimming kept — these
+          // measure what the opponent costs to run, which the trimming has no say in
           moveTimesMs: playout.defenderMoveTimesMs,
+          tablebaseLookupsPerMove: playout.defenderTablebaseLookups,
         })
       } finally {
         Math.random = originalRandom
@@ -185,6 +200,7 @@ export function resolveConfig(
     playoutsPerPuzzle: overrides.playoutsPerPuzzle ?? DEFAULT_CONFIG.playoutsPerPuzzle,
     seed: overrides.seed ?? DEFAULT_CONFIG.seed,
     resample: overrides.resample ?? DEFAULT_CONFIG.resample,
+    resumePreviousRun: overrides.resumePreviousRun ?? DEFAULT_CONFIG.resumePreviousRun,
     defenderKind: overrides.defenderKind ?? DEFAULT_CONFIG.defenderKind,
     minTablebaseRequestIntervalMs: overrides.minTablebaseRequestIntervalMs,
     puzzleSetFile: overrides.puzzleSetFile,

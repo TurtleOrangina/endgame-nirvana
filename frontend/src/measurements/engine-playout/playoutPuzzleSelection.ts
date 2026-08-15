@@ -4,12 +4,12 @@ import {
   createSeededRandom,
   loadCatalogPuzzles,
   shuffled,
-  type CatalogPuzzle,
 } from '@/measurements/shared/puzzleCatalog'
 import { formatYaml, parseMappingList, type YamlValue } from './yaml'
 
-// Above this, no tablebase can settle the position — the split the report calls out,
-// since a tablebase-backed check of the defence is impossible for them
+// Above this, no tablebase can settle the position, so a tablebase-backed check of the
+// defence is impossible for them. Not the same number as the report's size split — see
+// report.ts's REPORT_MEN_THRESHOLD.
 export const MAX_TABLEBASE_MEN = 7
 
 export interface PlayoutPuzzle {
@@ -38,36 +38,29 @@ export function userColorOf(
   return turn === 'white' ? 'black' : 'white'
 }
 
-// The four strata the sample is balanced over, so every subsplit the report gives
-// (many-men, win goal, draw goal) rests on the same number of puzzles
-const STRATA = ['win-manyMen', 'win-fewMen', 'draw-manyMen', 'draw-fewMen'] as const
-type Stratum = (typeof STRATA)[number]
+const MEASURABLE_GOALS = new Set(['win', 'draw'])
 
-function stratumOf(puzzle: CatalogPuzzle): Stratum | null {
-  const menPart = puzzle.pieceCount > MAX_TABLEBASE_MEN ? 'manyMen' : 'fewMen'
-  if (puzzle.expectedResult === 'win') return `win-${menPart}`
-  if (puzzle.expectedResult === 'draw') return `draw-${menPart}`
-  return null
-}
-
+/**
+ * A plain uniform sample of the catalog, deliberately *not* stratified over goal and size.
+ * The measurement is meant to say how good an opponent the selector is for the puzzles users
+ * actually meet, so the sample has to have the catalog's own mix (about two thirds win goals)
+ * rather than an engineered one. Balanced strata would give every report subgroup the same
+ * number of puzzles, at the price of a defender that scores well on the rare positions
+ * looking better than users would ever experience.
+ */
 function samplePuzzles(catalogPath: string, seed: number, totalCount: number): PlayoutPuzzle[] {
-  const random = createSeededRandom(seed)
-  const perStratum = Math.floor(totalCount / STRATA.length)
-  const candidates = loadCatalogPuzzles(catalogPath)
-  return STRATA.flatMap((stratum) =>
-    shuffled(
-      candidates.filter((candidate) => stratumOf(candidate) === stratum),
-      random,
-    )
-      .slice(0, perStratum)
-      .map((candidate) => ({
-        fen: candidate.fen,
-        categoryPath: candidate.categoryPath,
-        goal: candidate.expectedResult,
-        difficulty: candidate.difficulty,
-        men: candidate.pieceCount,
-      })),
+  const candidates = loadCatalogPuzzles(catalogPath).filter((candidate) =>
+    MEASURABLE_GOALS.has(candidate.expectedResult),
   )
+  return shuffled(candidates, createSeededRandom(seed))
+    .slice(0, totalCount)
+    .map((candidate) => ({
+      fen: candidate.fen,
+      categoryPath: candidate.categoryPath,
+      goal: candidate.expectedResult,
+      difficulty: candidate.difficulty,
+      men: candidate.pieceCount,
+    }))
 }
 
 /**

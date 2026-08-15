@@ -52,9 +52,9 @@ function pairedStats(entries, metric) {
 // DelayMoves and Combined are strongly right-skewed (a handful of 100-move draws sit next
 // to 4-move wins), so a mean of raw differences is dominated by the longest playouts and
 // carries their variance. The same difference expressed per puzzle as a *ratio* is far
-// better behaved: on the pairs whose answer is already known, the log-ratio raises
-// no-trickster's delay signal from t=1.2 to t=3.5 and trickster-geomean's draw delay from
-// t=1.3 to t=3.4, while the same-tuning null pair stays at t=-0.8. Reported as a percentage
+// better behaved: on the historical pairs whose answer was already known (see the
+// measurement README), the log-ratio raised a real delay signal from t=1.2 to t=3.5 and
+// another from t=1.3 to t=3.4, while a same-tuning null pair stayed at t=-0.8. Reported as a percentage
 // change, it is also the more natural question: "how much longer did the defense last?"
 function pairedRatioStats(entries, metric) {
   return summarize(
@@ -92,34 +92,51 @@ function signedRankZ(entries, metric) {
   return (positiveRankSum - expected) / deviation
 }
 
+// The same split the report uses: goal first, then size. Delay and combined are win-goal
+// only — a draw held for longer is not a better defense, so comparing draw delay would only
+// invite optimizing it (see src/measurements/engine-playout/report.ts).
+const isWin = (entry) => entry.goal === 'win'
+const isDraw = (entry) => entry.goal === 'draw'
+const MEN_THRESHOLD = 6
 const groups = [
-  ['all puzzles', () => true],
-  ['>7 men', (entry) => entry.men > 7],
-  ['win expected', (entry) => entry.goal === 'win'],
-  ['draw expected', (entry) => entry.goal === 'draw'],
+  ['all puzzles', () => true, true],
+  ['win expected', isWin, true],
+  ['  >6 men', (entry) => isWin(entry) && entry.men > MEN_THRESHOLD, true],
+  ['  ≤6 men', (entry) => isWin(entry) && entry.men <= MEN_THRESHOLD, true],
+  ['draw expected', isDraw, false],
+  ['  >6 men', (entry) => isDraw(entry) && entry.men > MEN_THRESHOLD, false],
+  ['  ≤6 men', (entry) => isDraw(entry) && entry.men <= MEN_THRESHOLD, false],
 ]
 
 console.log(`${beforePath}\n  ->  ${afterPath}\n`)
 console.log(`${paired.length} puzzles matched by FEN (paired comparison)\n`)
-for (const [label, includes] of groups) {
+for (const [label, includes, reportsDelay] of groups) {
   const entries = paired.filter(includes)
-  const parts = ['delayMoves', 'trickiness', 'combined'].map((metric) => {
-    const { average, sem } = pairedStats(entries, metric)
+  // An "all puzzles" delay figure still comes from its win-goal rows alone
+  const delayEntries = reportsDelay ? entries.filter(isWin) : []
+  const metrics = reportsDelay ? ['delayMoves', 'trickiness', 'combined'] : ['trickiness']
+  const parts = metrics.map((metric) => {
+    const source = metric === 'trickiness' ? entries : delayEntries
+    const { average, sem } = pairedStats(source, metric)
     const significance = Math.abs(average) > 2 * sem ? '*' : ' '
     return `${metric}=${average >= 0 ? '+' : ''}${average.toFixed(2)}±${sem.toFixed(2)}${significance}`
   })
-  const { improved, count } = pairedStats(entries, 'combined')
+  const trend = reportsDelay
+    ? `  (combined up on ${pairedStats(delayEntries, 'combined').improved}/${delayEntries.length})`
+    : ''
   console.log(
-    `  ${label.padEnd(15)} n=${String(count).padStart(3)}  ${parts.join('  ')}  ` +
-      `(combined up on ${improved}/${count})`,
+    `  ${label.padEnd(15)} n=${String(entries.length).padStart(3)}  ${parts.join('  ')}${trend}`,
   )
+  // The relative estimator is defined on delay and combined only, so a draw group has no
+  // second line
+  if (!reportsDelay) continue
   const ratios = ['delayMoves', 'combined'].map((metric) => {
-    const { average, sem } = pairedRatioStats(entries, metric)
+    const { average, sem } = pairedRatioStats(delayEntries, metric)
     const significance = Math.abs(average) > 2 * sem ? '*' : ' '
     const percent = (value) => `${(value * 100).toFixed(1)}%`
     return (
       `${metric}=${average >= 0 ? '+' : ''}${percent(average)}±${percent(sem)}${significance}` +
-      ` rank z=${signedRankZ(entries, metric).toFixed(2)}`
+      ` rank z=${signedRankZ(delayEntries, metric).toFixed(2)}`
     )
   })
   console.log(`  ${'(relative)'.padEnd(15)}${' '.repeat(8)}${ratios.join('   ')}`)

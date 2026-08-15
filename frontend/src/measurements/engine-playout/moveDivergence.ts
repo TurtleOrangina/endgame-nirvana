@@ -31,7 +31,7 @@ const LATEST_USABLE_PLY_FRACTION = 0.6
 
 export interface DivergenceOptions {
   frontendRoot: string
-  // Per-ply detail of the run to lift positions from (engine-playout-detail*.json)
+  // Per-ply detail of the run to lift positions from (.playout-runs/*.jsonl)
   detailFile: string
   baselineKind: DefenderKind
   variantKind: DefenderKind
@@ -88,6 +88,12 @@ function collectCandidatePositions(
   return candidates
 }
 
+// The run store's JSONL: a config header, then one finished puzzle per line (playoutRunStore)
+function readRunDetail(filePath: string): DetailMeasurement[] {
+  const [, ...rows] = readFileSync(filePath, 'utf8').split('\n')
+  return rows.flatMap((row) => (row.trim() === '' ? [] : [JSON.parse(row) as DetailMeasurement]))
+}
+
 export interface DivergenceResult {
   candidates: number
   divergent: number
@@ -97,9 +103,7 @@ export interface DivergenceResult {
 export async function findDivergentPositions(
   options: DivergenceOptions,
 ): Promise<DivergenceResult> {
-  const measurements = JSON.parse(
-    readFileSync(path.join(options.frontendRoot, options.detailFile), 'utf8'),
-  ) as DetailMeasurement[]
+  const measurements = readRunDetail(path.join(options.frontendRoot, options.detailFile))
   const candidates = collectCandidatePositions(measurements, options)
 
   const tablebase = createTablebaseClient(path.join(options.frontendRoot, '.tablebase-cache'))

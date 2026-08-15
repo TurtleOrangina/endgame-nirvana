@@ -7,7 +7,6 @@ import { MAX_TRICKINESS } from '@/utils/maintainFraction'
 import {
   baselineFileFor,
   createPlayoutRunner,
-  detailFileFor,
   PUZZLE_SET_FILE,
   resolveConfig,
 } from './playoutHarness'
@@ -44,24 +43,17 @@ describe.runIf(isEnabled)('engine playout', () => {
   afterAll(() => {
     runner.shutDown()
     if (measurements.length === 0) return
-    writeReport(
-      {
-        yamlPath: path.join(frontendRoot, baselineFileFor(config.defenderKind)),
-        detailPath: path.join(frontendRoot, detailFileFor(config.defenderKind)),
-      },
-      measurements,
-      {
-        defender: config.defenderKind,
-        temperature: config.defenderKind === 'with-variance' ? 'app' : 'minimum',
-        puzzleSet: config.puzzleSetFile ?? PUZZLE_SET_FILE,
-        seed: config.seed,
-        playoutsPerPuzzle: config.playoutsPerPuzzle,
-        defenderThreads: config.defenderThreads,
-        strongEngineThreads: config.strongEngineThreads,
-        userMoveThinkingTimeMs: USER_MOVE_THINKING_TIME_MS,
-        trickinessThinkingTimeMs: TRICKINESS_THINKING_TIME_MS,
-      },
-    )
+    writeReport(path.join(frontendRoot, baselineFileFor(config.defenderKind)), measurements, {
+      defender: config.defenderKind,
+      temperature: 'minimum',
+      puzzleSet: config.puzzleSetFile ?? PUZZLE_SET_FILE,
+      seed: config.seed,
+      playoutsPerPuzzle: config.playoutsPerPuzzle,
+      defenderThreads: config.defenderThreads,
+      strongEngineThreads: config.strongEngineThreads,
+      userMoveThinkingTimeMs: USER_MOVE_THINKING_TIME_MS,
+      trickinessThinkingTimeMs: TRICKINESS_THINKING_TIME_MS,
+    })
     // `vp test` intercepts console output by default, so the files are the real deliverable
     console.log(formatSummary(measurements))
   })

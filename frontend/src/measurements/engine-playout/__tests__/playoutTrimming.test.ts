@@ -87,6 +87,7 @@ describe('trimPlayout', () => {
     plies,
     finalFen: 'Z w - - 0 1',
     defenderMoveTimesMs: plies.filter((entry) => entry.side === 'defender').map(() => 400),
+    defenderTablebaseLookups: plies.filter((entry) => entry.side === 'defender').map(() => 1),
   })
 
   test('scores a won playout after cutting the converted tail', () => {

@@ -5,10 +5,10 @@ import {
   COMPARISON_DEFENDER,
   createPlayoutRunner,
   resolveConfig,
-  detailFileFor,
   PUZZLE_SET_FILE,
   type PlayoutMeasurementConfig,
 } from './playoutHarness'
+import { openRunStore, runDetailPath, runHeaderFor } from './playoutRunStore'
 import { formatPuzzleLine, formatSummary, writeReport, type PuzzleMeasurement } from './report'
 import { formatInFlightComparison, loadBaselinePuzzleScores } from './inFlightComparison'
 import { TRICKINESS_THINKING_TIME_MS, USER_MOVE_THINKING_TIME_MS } from './strongEngine'
@@ -48,13 +48,12 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
   const config = resolveConfig(options.frontendRoot, options)
   const runner = createPlayoutRunner(config)
 
-  // The puzzle set is grouped by stratum — every win goal before every draw goal, and few-men
-  // before many-men within each — and those groups cost very different amounts of time to
-  // play out. Walking it in file order would make the run's pace lurch at each group
-  // boundary and any ETA useless. Shuffling the *processing* order makes the cost per puzzle
-  // stationary, so a third of the puzzles really is about a third of the time. Each puzzle
-  // keeps its original index, which is both what seeds its playouts and where its result is
-  // written, so the output files are byte-for-byte order-independent.
+  // Puzzles cost very different amounts of time to play out — a held draw runs many times
+  // longer than a quick mate — and a hand-built set (a divergence set, say) can easily be
+  // ordered by exactly that. Shuffling the *processing* order makes the cost per puzzle
+  // stationary, so a third of the puzzles really is about a third of the time and the ETA
+  // holds. Each puzzle keeps its original index, which is both what seeds its playouts and
+  // where its result is written, so the output files are byte-for-byte order-independent.
   const processingOrder = shuffled(
     runner.puzzles.map((puzzle, index) => ({ puzzle, index })),
     createSeededRandom(config.seed + PROCESSING_ORDER_SEED_OFFSET),
@@ -65,18 +64,8 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
 
   const defenderDescription = {
     'move-selector': 'useMoveSelector',
-    multipv1: 'plain multipv-1 engine, no tablebase',
-    'multipv1-tablebase': 'plain multipv-1 engine, tablebase for won ≤7-men positions',
-    'no-trickster': 'useMoveSelector with the Trickster switched off',
-    'multipv-rank-delayer': 'useMoveSelector, delayer falling back to the multipv ordering',
-    'with-variance': "useMoveSelector at the app's own temperature, its sampling included",
-    'trickster-led': 'useMoveSelector with the delayer no longer squared over the Trickster',
-    'trickster-geomean': 'useMoveSelector with the Trickster combining probes by geometric mean',
-    'trickster-focused':
-      'useMoveSelector probing fewer candidates, each for longer (now production)',
-    'trickster-unfocused': 'useMoveSelector probing every candidate, as it did before',
-    'zeroing-distance': 'useMoveSelector seeding dtd by min(dtm, dtz) where zeroing decides',
-    'dtm-only-distance': 'useMoveSelector seeding dtd by dtm alone',
+    'engine-best-move': 'bare 800 ms multipv-1 search, no tablebase',
+    offline: 'useMoveSelector with every tablebase request failing (offline)',
   }[config.defenderKind]
   console.log(
     `Playing out ${runner.puzzles.length} puzzles × ${config.playoutsPerPuzzle} ` +
@@ -84,10 +73,37 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
       `user: native on ${config.strongEngineThreads} threads + Syzygy)`,
   )
 
-  const paths = {
-    yamlPath: path.join(config.frontendRoot, baselineFileFor(config.defenderKind)),
-    detailPath: path.join(config.frontendRoot, detailFileFor(config.defenderKind)),
+  const baselineFile = baselineFileFor(config.defenderKind)
+  const yamlPath = path.join(config.frontendRoot, baselineFile)
+
+  // Opened before the first puzzle so a run that cannot be resumed says so immediately
+  // rather than an hour in, and so every finished puzzle is on disk the moment it finishes
+  const detailPath = runDetailPath(config.frontendRoot, baselineFile)
+  const runStore = openRunStore(
+    detailPath,
+    runHeaderFor({
+      defender: config.defenderKind,
+      puzzleSet: config.puzzleSetFile ?? PUZZLE_SET_FILE,
+      seed: config.seed,
+      playoutsPerPuzzle: config.playoutsPerPuzzle,
+      puzzles: runner.puzzles,
+    }),
+    config.resumePreviousRun,
+  )
+  const resumed = new Map(
+    runStore.completed.map((measurement) => [measurement.puzzle.fen, measurement] as const),
+  )
+  for (const measurement of runStore.completed) {
+    const index = runner.puzzles.findIndex((puzzle) => puzzle.fen === measurement.puzzle.fen)
+    if (index !== -1) measurementByIndex[index] = measurement
   }
+  const playoutsAlreadyMeasured = (fen: string) => resumed.get(fen)?.playouts.length ?? 0
+  // A puzzle is left to do if it has fewer playouts than asked for — which covers both an
+  // interrupted run (none) and a run continued with a higher --playouts (some), where only
+  // the missing playouts are measured and appended to the ones already on disk
+  const remaining = processingOrder.filter(
+    ({ puzzle }) => playoutsAlreadyMeasured(puzzle.fen) < config.playoutsPerPuzzle,
+  )
   // Always the shipping selector's baseline, whatever this run's defender is. When they are
   // the same file, reading it here — before the run writes over it at the end — compares
   // against the previous move-selector run.
@@ -96,9 +112,20 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
   const baselineScores = loadBaselinePuzzleScores(comparisonBaselinePath)
 
   const startedAt = Date.now()
-  const done: PuzzleMeasurement[] = []
+  // Seeded with the resumed puzzles so the in-flight comparison covers the whole run, not
+  // just the part measured since the interruption
+  const done: PuzzleMeasurement[] = runStore.completed.filter(
+    (measurement) => measurement.playouts.length >= config.playoutsPerPuzzle,
+  )
   try {
     await runner.verifyStrongEngine()
+    if (runStore.completed.length > 0) {
+      console.log(
+        `Continuing ${detailPath}: ${done.length} of ${runner.puzzles.length} puzzles already ` +
+          `have all ${config.playoutsPerPuzzle} playouts, ` +
+          `${runStore.completed.length - done.length} are topped up to that`,
+      )
+    }
     if (!baselineScores) {
       console.log(
         `No baseline at ${comparisonBaselinePath} yet — running without an in-flight comparison`,
@@ -107,12 +134,20 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
       console.log(`In-flight comparison against ${comparisonBaselineFile} (move-selector)`)
     }
     console.log('')
-    for (const [position, { puzzle, index }] of processingOrder.entries()) {
-      const measurement = await runner.measurePuzzle(puzzle, index)
+    for (const [position, { puzzle, index }] of remaining.entries()) {
+      const earlier = resumed.get(puzzle.fen)
+      const measured = await runner.measurePuzzle(puzzle, index, earlier?.playouts.length)
+      // Written before anything else can fail, so an interrupted run never loses a playout
+      // it has already paid for. Only what was measured now goes in — the earlier playouts
+      // are already a row of their own.
+      runStore.append(measured)
+      const measurement = earlier
+        ? { puzzle: earlier.puzzle, playouts: [...earlier.playouts, ...measured.playouts] }
+        : measured
       measurementByIndex[index] = measurement
       done.push(measurement)
       const block = [
-        `[${position + 1}/${processingOrder.length}] ${formatPuzzleLine(measurement)}`,
+        `[${done.length}/${processingOrder.length}] ${formatPuzzleLine(measurement)}`,
         ...(baselineScores
           ? [
               formatInFlightComparison(done, baselineScores, {
@@ -120,7 +155,9 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
               }),
             ]
           : []),
-        formatEtaLine(position + 1, processingOrder.length, Date.now() - startedAt, new Date()),
+        // Extrapolated from this session's own work only: the resumed puzzles were measured
+        // in some earlier session whose pace says nothing about this one
+        formatEtaLine(position + 1, remaining.length, Date.now() - startedAt, new Date()),
       ]
       console.log(`${block.join('\n')}\n`)
     }
@@ -134,9 +171,9 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
     (measurement): measurement is PuzzleMeasurement => measurement !== undefined,
   )
 
-  writeReport(paths, measurements, {
+  writeReport(yamlPath, measurements, {
     defender: config.defenderKind,
-    temperature: config.defenderKind === 'with-variance' ? 'app' : 'minimum',
+    temperature: 'minimum',
     puzzleSet: config.puzzleSetFile ?? PUZZLE_SET_FILE,
     seed: config.seed,
     playoutsPerPuzzle: config.playoutsPerPuzzle,
@@ -161,8 +198,6 @@ export async function runEnginePlayout(options: PlayoutMeasurementOptions): Prom
   }
 
   console.log(`\n${formatSummary(measurements)}`)
-  console.log(
-    `\nBaseline written to ${paths.yamlPath}\nPer-ply detail written to ${paths.detailPath}`,
-  )
+  console.log(`\nBaseline written to ${yamlPath}\nPer-ply detail written to ${detailPath}`)
   console.log(`Tablebase requests: ${runner.tablebase.networkRequestCount()}`)
 }

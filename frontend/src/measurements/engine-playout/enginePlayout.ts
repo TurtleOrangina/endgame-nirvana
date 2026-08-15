@@ -1,23 +1,17 @@
 import { Chess } from 'chess.js'
 import type { EngineLine, PlayerColor } from '@/types'
-import {
-  DEFAULT_BEST_MOVE_THINKING_TIME_MS,
-  type StockfishEngine,
-} from '@/composables/useStockfishEngine'
+import type { StockfishEngine } from '@/composables/useStockfishEngine'
 import {
   PRODUCTION_TUNING,
-  TEMPERATURE,
-  TEMPERATURE_PAWNLESS_FIRST_TRY,
   useMoveSelector,
   type MoveSelectionResult,
   type SelectorTuning,
 } from '@/composables/useMoveSelector'
 import { isAutoDraw, isAutoWin, type AutoResolveContext } from '@/utils/autoResolve'
 import { engineMaintainFraction } from '@/utils/maintainFraction'
-import { hasPawnsOnBoard, materialByColor, uciToMoveArgs } from '@/utils/chess'
+import { materialByColor, uciToMoveArgs } from '@/utils/chess'
 import { scoreToOutcome } from '@/utils/puzzleEvaluation'
 import { MIN_TEMPERATURE } from '@/utils/weightedSample'
-import { useLichessTablebase } from '@/composables/useLichessTablebase'
 import { countPieces } from '@/measurements/shared/puzzleCatalog'
 import type { TablebaseClient } from '@/measurements/shared/tablebaseClient'
 import {
@@ -35,11 +29,6 @@ const MAX_PLIES = 400
 // so the playout does too — a defender that silently loses its tablebase access would be
 // a different opponent from the one users face.
 const TABLEBASE_MAX_PIECES = 8
-
-// What the Lichess tablebase actually answers in full. The app queries one man beyond it
-// (some 8-men positions still resolve), but a defender that plays *straight off* the
-// tablebase needs every move classified, so it stops at 7.
-const TABLEBASE_MAX_MEN_FOR_LOOKUP = 7
 
 // A high rating, so the win auto-solve isn't gated off (see isAutoWin): the playout's user
 // is a strong engine, and K+Q vs K is not training for anyone at this level.
@@ -79,100 +68,58 @@ export interface PlayoutResult {
   // an auto-solve may have made moot. Excludes the harness's own awaited tablebase
   // pre-warm: the app never waits for that lookup, so it is not time the opponent costs.
   defenderMoveTimesMs: number[]
+  // Distinct positions the tablebase was consulted about while choosing each of those moves.
+  // Zero means the defender played that move on engine evaluation alone — which is what a
+  // position too big for any tablebase looks like, and what a broken tablebase would look
+  // like everywhere.
+  defenderTablebaseLookups: number[]
 }
 
 /**
- * Which opponent is being measured. Everything else about the playout (the user engine,
- * the done detection, the trimming, the trickiness measurement) is identical across all
- * three, so the difference between two runs is the defender and nothing else.
+ * Which opponent is being measured. Everything about the playout apart from this — the user
+ * engine, the done detection, the trimming, the trickiness measurement — must stay identical
+ * across kinds, or a comparison stops isolating the defender. See CLAUDE.md's "Adding a
+ * defender to compare against".
  *
  * - `move-selector` — the app's real one.
- * - `multipv1` — the floor: one 400 ms search, top line played. No tablebase, no delayer,
- *   no trickster, no sampling; what the app would be if `useMoveSelector` didn't exist.
- * - `multipv1-tablebase` — the same, except a won position small enough for the tablebase
- *   is played straight off it (its moves arrive sorted best-first by dtm, or by dtz where
- *   that is the more valuable ordering). This isolates how much of the selector's value is
- *   just having perfect information where perfect information exists.
- * - `no-trickster` — the real selector with the Trickster switched off, so a lost position
- *   is sampled by the delayer alone and a drawn one uniformly. What the Trickster is worth.
- * - `multipv-rank-delayer` — the real selector, but where the delayer has no dtd to work
- *   with it weights the lines by their multipv ordering instead of their centipawn gaps.
- * - `with-variance` — the selector driven at the temperature the *app* uses, so its own
- *   sampling is in the measurement. Everything else runs at MIN_TEMPERATURE; see
- *   `defenderTemperature`.
- * - `trickster-led` — the real selector with the delayer's weight no longer squared, so the
- *   Trickster decides a lost position and the delayer only breaks its ties.
- * - `trickster-geomean` — the Trickster combining a line's probes by geometric mean instead
- *   of by product, so its weight stops depending on how long the line's PV happened to be.
- * - `trickster-focused` — the Trickster probing only the candidates the delayer rates
- *   highest, each for proportionally longer, at the same total search cost. Measured, briefly
- *   adopted, then reverted — see the README. `trickster-unfocused` is the shipped tuning under
- *   another name, used to measure drift.
+ * - `engine-best-move` — the floor: one 800 ms multipv-1 search on the same multithreaded
+ *   WASM build, top line played. No tablebase, no delayer, no Trickster, no sampling; what the
+ *   app would be if `useMoveSelector` didn't exist.
+ * - `offline` — the shipped selector with the same shipped tuning, but every
+ *   tablebase request fails, as it does for a user with no connection. The selector still asks
+ *   (that is what the app does offline) and still has to defend on the engine search alone,
+ *   so this measures what a user loses by playing offline.
  */
-export type DefenderKind =
-  | 'move-selector'
-  | 'multipv1'
-  | 'multipv1-tablebase'
-  | 'no-trickster'
-  | 'multipv-rank-delayer'
-  | 'with-variance'
-  | 'trickster-led'
-  | 'trickster-geomean'
-  | 'trickster-focused'
-  | 'trickster-unfocused'
-  | 'zeroing-distance'
-  | 'dtm-only-distance'
+export type DefenderKind = 'move-selector' | 'engine-best-move' | 'offline'
 
 export const SELECTOR_TUNINGS: Record<DefenderKind, SelectorTuning> = {
   'move-selector': PRODUCTION_TUNING,
-  multipv1: PRODUCTION_TUNING,
-  'multipv1-tablebase': PRODUCTION_TUNING,
-  'no-trickster': { ...PRODUCTION_TUNING, trickster: false },
-  'multipv-rank-delayer': { ...PRODUCTION_TUNING, delayerFallback: 'multipv-rank' },
-  'with-variance': PRODUCTION_TUNING,
-  // Win-goal delay turned out to have almost no headroom — every defender ever measured
-  // lands within two moves of a bare multipv-1 search — while the Trickster is worth ~0.08
-  // trickiness. This arm turns the dial the other way: the delayer stops being squared, so
-  // it only breaks the Trickster's ties instead of overruling it.
-  'trickster-led': { ...PRODUCTION_TUNING, delayerExponent: 1 },
-  // A line is probed at as many positions as its PV is long enough to supply, and MultiPV
-  // PV lengths vary from a couple of half-moves to twenty. Multiplying the fractions makes
-  // the longer-PV line look trickier for a reason that is about the search rather than the
-  // position; the geometric mean divides that out.
-  'trickster-geomean': { ...PRODUCTION_TUNING, tricksterAggregation: 'geometric-mean' },
-  'trickster-focused': { ...PRODUCTION_TUNING, tricksterProbedCandidates: 3 },
-  // Identical to what ships. It exists to measure the *measurement*: running the shipped
-  // tuning against its own committed baseline reports the run-to-run drift that every other
-  // comparison is read on top of. It is not a design alternative.
-  'trickster-unfocused': PRODUCTION_TUNING,
-  // The two arms of the zeroing-distance question. They are deliberately a pair rather than
-  // one kind measured against `move-selector`'s baseline: the effect only shows in positions
-  // where a zeroing move is as decisive as mate, which is a small enough slice of a full run
-  // that it has to be measured on a targeted puzzle set — and a run on a different puzzle set
-  // is not comparable to the shipped baseline.
-  'zeroing-distance': PRODUCTION_TUNING,
-  'dtm-only-distance': { ...PRODUCTION_TUNING, zeroingDistance: false },
+  // `engine-best-move` never builds a selector; the entry exists so every kind can be looked
+  // up here (the divergence study does), not because this tuning is used
+  'engine-best-move': PRODUCTION_TUNING,
+  // Deliberately the shipped tuning: what differs offline is the information, not the logic
+  offline: PRODUCTION_TUNING,
 }
 
 /**
- * The temperature the measurement drives the selector at.
- *
- * Evaluation runs at `MIN_TEMPERATURE` by default: the selector then always plays its
+ * The bare engine defender's search budget, deliberately twice `useMoveSelector`'s own
+ * `DEFAULT_BEST_MOVE_THINKING_TIME_MS`: the selector spends its extra time on the Trickster's
+ * probes rather than on a deeper best-move search, and this arm is meant to answer "would the
+ * position simply be defended better by thinking longer about the top move?" — so it is given
+ * a comparable total, not a comparably deep first search.
+ */
+const ENGINE_BEST_MOVE_THINKING_TIME_MS = 800
+
+/**
+ * The measurement drives the selector at `MIN_TEMPERATURE`: it then always plays its
  * highest-weighted candidate, and still samples between candidates the weighting rates
  * exactly equal. That is deliberately *not* how the app behaves — the variance the app's
  * temperature buys is what keeps a puzzle worth replaying — but a comparison is trying to
  * find out which weighting defends better, and letting each run roll its own dice only adds
  * a noise source on top of the two time-limited engines. The sampling is a property of the
- * opponent rather than of the weighting, so it is held fixed unless it is the thing under
- * test.
- *
- * `with-variance` is that exception: the shipped temperature, sampling included, which is
- * what says whether the variance itself costs anything.
+ * opponent rather than of the weighting, so it is held fixed.
  */
-function defenderTemperature(defenderKind: DefenderKind, currentFen: string): number {
-  if (defenderKind !== 'with-variance') return MIN_TEMPERATURE
-  return hasPawnsOnBoard(currentFen) ? TEMPERATURE : TEMPERATURE_PAWNLESS_FIRST_TRY
-}
+const DEFENDER_TEMPERATURE = MIN_TEMPERATURE
 
 export interface PlayoutOptions {
   puzzle: PlayoutPuzzle
@@ -268,8 +215,6 @@ export async function playOutPuzzle(options: PlayoutOptions): Promise<PlayoutRes
     defenderEngine,
     SELECTOR_TUNINGS[options.defenderKind ?? 'move-selector'],
   )
-  // Reads through the same intercepted fetch and disk cache as the harness's own client
-  const lichessTablebase = useLichessTablebase()
   const autoResolveContext: AutoResolveContext = {
     playerColor,
     initialFen: startFen,
@@ -280,16 +225,30 @@ export async function playOutPuzzle(options: PlayoutOptions): Promise<PlayoutRes
   const plies: PlayoutPly[] = []
   const playedMoves: string[] = []
   const defenderMoveTimesMs: number[] = []
-  const finish = (endReason: PlayoutEndReason): PlayoutResult => ({
-    endReason,
-    plies,
-    finalFen: chess.fen(),
-    defenderMoveTimesMs,
-  })
+  const defenderTablebaseLookups: number[] = []
+
+  // Positions consulted while choosing the move currently being chosen. A set, because the
+  // harness pre-warms the cache with the very position the selector then queries itself, and
+  // that is one position the defender knew about rather than two.
+  const positionsLookedUpForThisMove = new Set<string>()
+  const stopListening = tablebase.addLookupListener((positionKey) =>
+    positionsLookedUpForThisMove.add(positionKey),
+  )
+
+  const finish = (endReason: PlayoutEndReason): PlayoutResult => {
+    stopListening()
+    return {
+      endReason,
+      plies,
+      finalFen: chess.fen(),
+      defenderMoveTimesMs,
+      defenderTablebaseLookups,
+    }
+  }
 
   /**
    * useMoveSelector prints its candidate table on every move. That is the point of it in
-   * the browser devtools, but a 120-puzzle run makes thousands of moves and the tables bury
+   * the browser devtools, but a full run makes thousands of moves and the tables bury
    * the run's own output. Only `console.log` is swapped, and only for the selector's call,
    * so its warnings and the tablebase's rate-limit notices still come through. The harness
    * already swaps Math.random around a playout the same way.
@@ -324,15 +283,20 @@ export async function playOutPuzzle(options: PlayoutOptions): Promise<PlayoutRes
     plies.push({ ...ply, san: move.san })
   }
 
-  // The move the opponent under measurement plays, in the shape the board's auto-solves
-  // read. The plain-engine defender gets the same 400 ms budget useMoveSelector's own
-  // bestmove search uses, so the two differ in what they do with the search, not in how
-  // much thinking they are given.
-  const plainEngineMove = async (currentFen: string): Promise<MoveSelectionResult> => {
+  /**
+   * The bare engine's move, in the shape the board's auto-solves read.
+   *
+   * It is searched from the puzzle's starting position with the whole game replayed onto it,
+   * exactly as the user engine is: a bare `position fen` leaves the engine blind to what has
+   * been played, and in a position where several moves score the same nothing then stops it
+   * shuffling into a threefold it cannot see coming. `useMoveSelector` does its own repetition
+   * bookkeeping (`seenPositionKeys`) and so never needed this; a plain search must be told.
+   */
+  const engineBestMove = async (): Promise<MoveSelectionResult> => {
     const [line] = await defenderEngine.getBestMoves(
-      currentFen,
-      [],
-      DEFAULT_BEST_MOVE_THINKING_TIME_MS,
+      startFen,
+      [...playedMoves],
+      ENGINE_BEST_MOVE_THINKING_TIME_MS,
       1,
     )
     return {
@@ -344,51 +308,39 @@ export async function playOutPuzzle(options: PlayoutOptions): Promise<PlayoutRes
     }
   }
 
-  const chooseDefenderMove = async (currentFen: string): Promise<MoveSelectionResult> => {
-    if (options.defenderKind === 'multipv1') {
-      return timedSelection(() => plainEngineMove(currentFen))
-    }
-
-    if (options.defenderKind === 'multipv1-tablebase') {
-      // Only a won puzzle inside the tablebase's reach: a drawn one has no distance to
-      // maximize, and the ordering that makes this defender interesting is the dtm one.
-      const isTablebaseWin =
-        puzzle.goal === 'win' && countPieces(currentFen) <= TABLEBASE_MAX_MEN_FOR_LOOKUP
-      if (isTablebaseWin) {
-        const result = await lichessTablebase.query(currentFen)
-        const topMove = result?.moves[0]
-        // The scores stay null: the tablebase category is a stronger verdict than an
-        // engine evaluation, and evaluatePuzzleGoal prefers it wherever it settles the goal
-        if (topMove) {
-          // A move read off the tablebase costs no thinking; the query that produced it is
-          // network time, which the move times deliberately don't count
-          defenderMoveTimesMs.push(0)
-          return {
-            bestmove: topMove.uci,
-            scoreCP: null,
-            scoreMate: null,
-            tbData: result,
-            selectedLine: null,
-          }
-        }
-      }
-      return timedSelection(() => plainEngineMove(currentFen))
-    }
-
+  const selectorMove = async (currentFen: string): Promise<MoveSelectionResult> => {
     // useMoveSelector never awaits its own tablebase query — it only uses the answer if it
     // arrives before the engine search finishes. Warming the cache first is what makes the
     // rate-limited lookup win that race, so the measured defender is the one users face.
+    // `offline` skips the warm-up: there is no answer to warm, and awaiting a lookup
+    // that fails by design would end the playout instead of leaving the selector to cope
+    // without one, which is the whole point of that arm. It still passes `queryTablebase`, so
+    // the selector makes (and loses) the request exactly as it does in an offline browser.
     const queryTablebase = countPieces(currentFen) <= TABLEBASE_MAX_PIECES
-    if (queryTablebase) await tablebase.lookup(currentFen)
+    if (queryTablebase && options.defenderKind !== 'offline') {
+      await tablebase.lookup(currentFen)
+    }
 
     return timedSelection(() =>
       moveSelector.getBestMove(startFen, playedMoves, currentFen, {
-        temperature: defenderTemperature(options.defenderKind ?? 'move-selector', currentFen),
+        temperature: DEFENDER_TEMPERATURE,
         isPremove: false,
         playerColor,
         queryTablebase,
       }),
     )
+  }
+
+  const chooseDefenderMove = async (currentFen: string): Promise<MoveSelectionResult> => {
+    positionsLookedUpForThisMove.clear()
+    // The bare engine consults no tablebase at all — that is most of what it is missing — so
+    // its lookup counts come out at zero, which is the honest reading rather than a gap
+    const selection =
+      options.defenderKind === 'engine-best-move'
+        ? await timedSelection(engineBestMove)
+        : await selectorMove(currentFen)
+    defenderTablebaseLookups.push(positionsLookedUpForThisMove.size)
+    return selection
   }
 
   // Whether a move by the user would land in a position the board resolves on its own

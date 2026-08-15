@@ -7,14 +7,57 @@ There is no ground truth to compare against, so its numbers are only meaningful 
 to another run_ — but it works on every puzzle, including draw-goal ones and positions far
 too big for any tablebase, and it scores the Trickster half of the selector.
 
+The set is **64 puzzles drawn uniformly from the catalog**, six playouts each. Uniformly, not
+stratified: the mix of goals and sizes is meant to be the one users meet (about two thirds win
+goals), so a defender that shines on rare positions cannot look better than it will feel. The
+price is uneven subgroups — the smallest, drawn positions of more than six men, is around nine
+puzzles.
+
 ## Running it
 
 ```sh
-node scripts/measure-engine-playout.mjs            # the full committed set (hours)
-node scripts/measure-engine-playout.mjs --puzzles 8 --playouts 1 --resample   # smoke test
-node scripts/measure-engine-playout.mjs --defender no-trickster               # a variant
+node scripts/measure-engine-playout.mjs             # the full committed set (2-3 hours)
+node scripts/measure-engine-playout.mjs --continue  # pick an interrupted run back up
+node scripts/measure-engine-playout.mjs --defender engine-best-move   # the comparison floor
+node scripts/measure-engine-playout.mjs --defender offline   # the same selector, offline
 node scripts/measure-engine-playout.mjs --help
 ```
+
+Three opponents can be measured. `move-selector` is what ships and what
+`engine-playout-baseline.yaml` holds; `engine-best-move` is the floor it is judged against —
+one 800 ms multipv-1 search on the same multithreaded WASM build, top line played, no
+tablebase and no selection logic whatsoever. Both are searched with the game replayed from the
+puzzle's starting position rather than from a bare FEN, so neither can shuffle into a
+threefold it never saw coming.
+
+`offline` is the third: the shipped selector, shipped tuning, with every tablebase
+request failing the way it does with no connection. The app works offline, so this is an
+opponent real users meet — the question it answers is how much of the defense rests on the
+Lichess tablebase. Its tablebase coverage is 0% by construction, so that check carries no
+information for this arm; compare it against a `move-selector` run measured in the same
+session (see _The drift_), not against the committed baseline.
+
+A run can be interrupted with Ctrl+C and continued later with `--continue`: every finished
+puzzle is appended to `.playout-runs/` as it completes, and only the puzzle that was in
+progress is replayed. Continuing refuses outright if the defender, seed or puzzle set has
+changed in the meantime — resuming into a different configuration would mix two incomparable
+runs into one baseline with nothing looking wrong afterwards.
+
+**A finished run can be extended to more playouts per puzzle** by continuing it with a higher
+`--playouts`, which is the one configuration change `--continue` allows (lowering it is still
+refused — it would report a subset of what was measured):
+
+```sh
+node scripts/measure-engine-playout.mjs --defender offline --playouts 6 --continue
+```
+
+Each puzzle is then played out only for the playouts it is missing, and those are appended to
+the ones already on disk; the baseline is rewritten over all of them. The added playouts are
+seeded from the run numbers they actually get (4th, 5th, 6th), so they are new playouts rather
+than a repeat of the sampling of the first ones. The playouts of one puzzle are then spread
+over two sessions, which is exactly the between-session drift described under _The drift_ —
+so a topped-up baseline is a better estimate of the defender (more playouts per puzzle, less
+noise) but still not a control for a run measured on some later day.
 
 The user engine is a native Stockfish build with Syzygy tables beside it. Its directory is
 resolved per machine (`src/measurements/shared/enginePaths.ts`): the dev container's
@@ -30,7 +73,8 @@ RUN_PLAYOUT_MEASUREMENT=1 vp test --run enginePlayout
 ```
 
 Both drive the same harness. Results land in `engine-playout-baseline.yaml` (committed) and
-`engine-playout-detail.json` (per-ply, gitignored).
+`.playout-runs/run.jsonl` (the run's configuration, then one finished puzzle with all its
+plies per line — gitignored, and what `--continue` and the divergence study read).
 
 ## The three numbers
 
@@ -42,8 +86,26 @@ Both drive the same harness. Results land in `engine-playout-baseline.yaml` (com
 - **Combined** — `DelayMoves × (1 + Trickiness)`. A long defense the user can sleepwalk
   through and a short one full of traps are both worth less than a long tricky one.
 
-Reported for all puzzles and for three subsplits: >7 men (no tablebase can settle these),
-win-goal, and draw-goal.
+Plus **tablebase coverage**: the share of the defender's moves it consulted the tablebase for
+at all, and how many distinct positions that cost per playout. Not a score — a check. A run
+whose tablebase access quietly broke measures a different opponent from the one users face,
+and would otherwise only show up as mysteriously weaker defense.
+
+### How they are split
+
+Goal first, size second: `all`, then `winGoal` and `drawGoal`, each with `moreThanSixMen` and
+`sixOrLessMen` under it. What a defender should be doing differs far more between holding a
+draw and dragging out a loss than between a big position and a small one.
+
+**Draw goals report trickiness only.** Making the user sit through a longer hold is not better
+training — what makes a drawn position worth playing is being made to keep finding the moves
+that hold it, which is what trickiness measures. Reporting draw delay would invite optimizing
+it, so it is left out, and `combined` (delay scaled by trickiness) with it. Consequently the
+`all` group's delay and combined figures are computed over its **win-goal rows alone**, while
+its trickiness spans every puzzle; each figure carries its own `n`.
+
+The size split is at six men, which is not the same question as `MAX_TABLEBASE_MEN`: a 7-man
+position is settled by the tablebase but is still a big position for the engine to defend.
 
 ## When a playout is done
 
@@ -108,18 +170,16 @@ property of the opponent rather than of the weighting — letting each run roll 
 just adds a third noise source on top of two time-limited engines. Holding it fixed makes a
 difference between two runs attributable to the thing that changed.
 
-The exception is `--defender with-variance`, which uses the app's own temperature so the
-sampling is in the measurement. That is what answers "does the variance itself cost anything?"
-— a real question, since the shipped opponent is the sampled one. Its numbers are not
-comparable to a minimum-temperature run: they measure a different opponent.
-
-Every baseline records which of the two it was in its `config:` line.
+Whether the variance itself costs anything has been asked and answered — see _What has
+already been measured_ — by a defender kind that ran at the app's own temperature. A kind like
+that measures a different opponent, so its numbers are never comparable to a
+minimum-temperature run; the baseline records which of the two it was in its `config:` line.
 
 ## Reading a comparison
 
 Both engines search by _time_, so a single playout is not reproducible: node counts vary
 with machine load, the moves diverge, and per-puzzle numbers swing widely. Only the
-averages are stable, which is what the seeded 120-puzzle set and 2 playouts per puzzle are
+averages are stable, which is what the seeded 64-puzzle set and 6 playouts per puzzle are
 for. The summary reports `sem` (standard error of the mean) alongside `sd` — a difference
 between two runs' means is only interesting if it is well outside it.
 
@@ -152,13 +212,14 @@ always against `engine-playout-baseline.yaml` — the shipping `move-selector` �
 defender is being measured, so an alternative defender's deltas answer "better or worse
 than what ships?". The line names the file it compared against. A `--defender
 move-selector` run therefore compares against its own previous run, which is the noise
-floor of the measurement.
+floor of the measurement. Like the report, it shows no delay for draw goals.
 
 The puzzle set lives in `engine-playout-puzzles.yaml` and is **committed rather than
 re-derived from the seed**. `public/exercises.json` is refreshed periodically from prod,
 and any change to it would silently re-sample the set — making a new run incomparable to
 the baseline with nothing looking wrong. `--resample` regenerates it deliberately, which
-invalidates every older baseline.
+invalidates every older baseline. (`--continue` guards the same thing within a run: the
+resumed file records a digest of the set it was measured on.)
 
 ## Getting a change out from under the noise
 
@@ -167,8 +228,9 @@ The selector's own sampling is already out of the way (see _Evaluation runs at m
 temperature_), which leaves the positions:
 
 - **Measure only where the change bites.** `scripts/find-move-divergence.mjs` replays a
-  previous run's recorded playouts, asks two defenders for a move at each position at minimum
-  temperature, and writes the positions where they disagree as a puzzle set. Those rows carry
+  previous run's recorded playouts (`.playout-runs/run.jsonl`), asks two defenders — so it
+  needs the candidate to exist as a second `DefenderKind` — for a move at each position at
+  minimum temperature, and writes the positions where they disagree as a puzzle set. Those rows carry
   `defenderToMoveFirst: true`, so playing one out resumes at the disagreement with the
   defender on move. Feed the set to two ordinary runs via `--puzzle-set` and compare them as
   usual:
@@ -190,8 +252,47 @@ temperature_), which leaves the positions:
 
 ## What has already been measured
 
-Kept here so the same ideas don't get re-run from scratch. Every one of these is
-reproducible as a `--defender` kind.
+### On the current 64-puzzle set
+
+**How much the selector beats a bare search by: `engine-best-move`, both arms measured the
+same day.** The floor gets 800 ms multipv-1 on the same WASM build, which costs the same
+thinking time as the selector (768 vs 772 ms mean per move), so this is a like-for-like
+comparison of what the selection logic adds on top of a search:
+
+```
+  win expected    n= 43  delayMoves=-0.57±0.43   trickiness=-0.03±0.01*  combined=-1.12±0.55*
+  (relative)             delayMoves=-2.9%±4.2%  rank z=-0.91
+    >6 men        n= 21  delayMoves=+0.03±0.44   trickiness=-0.02±0.02   combined=-0.24±0.52
+    ≤6 men        n= 22  delayMoves=-1.13±0.70   trickiness=-0.03±0.02   combined=-1.95±0.91*
+  draw expected   n= 21  trickiness=+0.00±0.03
+    >6 men        n=  9  trickiness=+0.07±0.04
+    ≤6 men        n= 12  trickiness=-0.05±0.04
+```
+
+Read carefully, because the headline is smaller than it looks:
+
+- **On win goals the selector is ahead, and it is trickiness that carries it** (-0.03±0.01
+  against the floor, significant). Delay is not: -0.57±0.43 raw, and the relative estimator
+  puts it at -2.9%±4.2% with rank z=-0.91, i.e. nothing. This is the old "win-goal delay has
+  no headroom" finding reproduced on the new set against a floor with twice the old budget.
+- **The win-goal gap is entirely in the small positions** (≤6 men, `combined -1.95±0.91`),
+  where the selector has tablebase distances to steer by and the bare search has none. Above
+  six men, where neither has perfect information, the two are indistinguishable
+  (`delay +0.03±0.44`).
+- **On draws the selector does not beat a plain 800 ms search at all** (`trickiness +0.00±0.03`
+  overall; the >6-men row even leans the floor's way at +0.07±0.04, ~1.7 SEM). Whatever the
+  Trickster is worth in a drawn position, this comparison cannot see it. That is the most
+  interesting open question the measurement currently poses — and note the floor's tablebase
+  coverage is 0% against the selector's 89%, so on the ≤7-men draws the two are not even
+  playing with the same information.
+
+### On the old set
+
+**Every number below was measured on the old set** — 120 puzzles stratified into equal win/draw × many/few-men buckets, two
+playouts each — and against baselines that are no longer in the tree. The conclusions still
+hold; the figures are not comparable to a run on the current 64-puzzle sample, and none of
+these arms exists as a `--defender` kind any more (the code is in git history, and CLAUDE.md's
+_Adding a defender_ says how to bring one back).
 
 **The app's own temperature costs essentially nothing: `with-variance`.** Sampling at the
 shipped `TEMPERATURE` instead of `MIN_TEMPERATURE` measured `delay +1.9% ± 4.4%, rank
@@ -206,7 +307,7 @@ temperature** — the sampling adds no more divergence than the two time-limited
 already do by themselves. (Also note the committed set has exactly **one** pawnless
 position, so `TEMPERATURE_PAWNLESS_FIRST_TRY`'s much flatter 0.33 is effectively unmeasured.)
 
-**What the noise budget actually is.** Decomposing the paired variance of a 120-puzzle,
+**What the noise budget actually is.** Decomposing the paired variance of the old 120-puzzle,
 2-playout comparison into playout noise (`W`, reducible by more playouts) and genuine
 per-position differences between the two arms (`T`, reducible only by more puzzles):
 
@@ -215,11 +316,13 @@ per-position differences between the two arms (`T`, reducible only by more puzzl
 | win   | 10.6       | 22                    | 15  | 60%                         |
 | draw  | 24.6       | 397                   | 58  | 87%                         |
 
-So the smallest raw effect a standard run can resolve (2 SEM) is **±1.6 delay moves on
-wins and ±5.5 on draws**, and quadrupling the playouts per puzzle only takes draws to ±4.1
-— the noise is in the trajectories, not in the sample size. Chasing a sub-move effect on
-raw delay is hopeless by construction; use the relative estimator (where the same run
-resolves ~8% on wins, ~15% on draws), a divergence set, or both.
+So the smallest raw effect that run could resolve (2 SEM) was **±1.6 delay moves on wins and
+±5.5 on draws**, and quadrupling the playouts per puzzle only took draws to ±4.1 — the noise
+is in the trajectories, not in the sample size. That decomposition is why the current set
+trades puzzles for playouts (64 × 6 rather than 120 × 2): most of the paired variance was
+within-puzzle, which is the half more playouts actually buy down. Chasing a sub-move effect on
+raw delay is still hopeless by construction; use the relative estimator (which resolved ~8% on
+wins, ~15% on draws), a divergence set, or both.
 
 **Rejected after a drift check: `trickster-focused` — and the drift check is the lesson.**
 The Trickster probed all five candidates at 20 ms each, including ones the delayer had already
@@ -258,8 +361,8 @@ offset is the same size as the effects worth chasing. On win goals, where the wh
 across every defender ever measured is under two moves, it is decisive.
 
 So: **a cross-day comparison against a committed baseline cannot support an adoption.** Measure
-the candidate and `--defender trickster-unfocused` (the shipped tuning under another name) in the
-same session, and compare those two to each other. Committed baselines are still useful for
+the candidate and a control — a second `DefenderKind` that is the shipped tuning under another
+name — in the same session, and compare those two to each other. Committed baselines are still useful for
 watching a run in flight and for ruling changes _out_; they are not evidence for ruling one in.
 
 **Win-goal delay has almost no headroom.** Across every defender measured on the committed

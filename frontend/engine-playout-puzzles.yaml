@@ -1,125 +1,69 @@
 # The fixed puzzle set the engine-playout measurement runs on — commit it.
 # Regenerate only with --resample, which invalidates comparisons to older baselines.
 seed: 20260809
-count: 120
+count: 64
 puzzles:
-  - { fen: "8/7p/6p1/6P1/5P1P/2k1p3/8/3K4 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 8 }
-  - { fen: "2k5/5p1p/p3pp2/8/4P3/P4P2/5KPP/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 12 }
-  - { fen: "8/5p2/1ppk2pp/p2P3P/P1P1K1P1/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1657, men: 13 }
-  - { fen: "8/Pkp5/5p2/1p5p/1P1K3P/6P1/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1975, men: 10 }
-  - { fen: "8/8/1p2Pk2/5Ppp/P3K3/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 8 }
-  - { fen: "8/2p5/1p1p1k2/3P4/6Pp/P7/1P4P1/7K w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1968, men: 11 }
-  - { fen: "8/5p2/5pk1/4p2p/2p1P2P/2P2PP1/3K4/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 12 }
-  - { fen: "8/7p/1pKN4/pP6/1k6/6P1/7P/8 b - - 3 43", categoryPath: "/♘ vs Pawns", goal: "win", difficulty: 891, men: 9 }
+  - { fen: "8/8/8/1p2rK2/1P6/2P3P1/2k5/8 w - - 0 65", categoryPath: "/♖ vs Pawns", goal: "win", difficulty: 1122, men: 7 }
+  - { fen: "8/8/8/8/2PK4/8/3k3r/8 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "draw", difficulty: 2300, men: 4 }
+  - { fen: "5k2/5p2/4qQ2/3K4/8/5P2/8/8 w - - 0 61", categoryPath: "/♕ vs ♛", goal: "win", difficulty: 631, men: 6 }
+  - { fen: "1N6/8/8/P6p/8/6k1/6p1/6K1 b - - 0 50", categoryPath: "/♘ vs Pawns", goal: "win", difficulty: 555, men: 6 }
+  - { fen: "3r2k1/p4ppp/8/4Q3/8/8/PP3PPP/6K1 b - - 0 23", categoryPath: "/♕ vs ♜", goal: "win", difficulty: 400, men: 13 }
   - { fen: "8/4k3/p5p1/1p2Pr1p/1P1K4/P4R1P/8/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2300, men: 12 }
-  - { fen: "5r1k/p5pp/8/8/3P4/2P5/PP2p1PP/4R2K b - - 0 30", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 653, men: 14 }
-  - { fen: "3k4/1p6/p1p4p/8/P7/8/1P4PP/6K1 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 10 }
-  - { fen: "8/1pp1k3/6p1/4K3/1PP5/6P1/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 8 }
-  - { fen: "8/7b/3k3K/1p3p1P/1P1p4/1B1P4/2P5/8 b - - 1 40", categoryPath: "/♗ vs ♝/Same Colour", goal: "win", difficulty: 1041, men: 11 }
-  - { fen: "7k/pp1P4/3r4/2p5/2P3N1/7K/PP6/8 w - - 0 1", categoryPath: "/♖ vs ♞", goal: "win", difficulty: 2150, men: 11 }
-  - { fen: "8/6p1/5k2/1p5P/p2KP1P1/8/2P5/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 9 }
-  - { fen: "8/8/3k1P1p/2p3p1/2P5/1P3K1P/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 9 }
-  - { fen: "3k4/3P4/3K1N2/1p3p1p/2b2P1P/6P1/8/8 b - - 4 51", categoryPath: "/♗ vs ♞", goal: "win", difficulty: 1154, men: 11 }
-  - { fen: "1r4k1/2p2p1p/6p1/8/8/Q7/5PPP/6K1 b - - 0 33", categoryPath: "/♕ vs ♜", goal: "win", difficulty: 500, men: 11 }
-  - { fen: "8/8/8/P3k3/1PP5/4N3/5p1r/2K5 w - - 0 53", categoryPath: "/♖ vs ♞", goal: "win", difficulty: 1001, men: 8 }
-  - { fen: "8/8/4kp2/p1bp1p1p/P2P1P2/4K2P/8/8 w - - 0 47", categoryPath: "/♗ vs Pawns", goal: "win", difficulty: 1379, men: 12 }
-  - { fen: "8/4pp2/1k1p4/pP1P2p1/K2P2b1/P2B2P1/5P2/8 b - - 0 38", categoryPath: "/♗ vs ♝/Same Colour", goal: "win", difficulty: 484, men: 15 }
-  - { fen: "8/8/5p2/2k3pp/4Pp1P/2K2P2/6P1/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 10 }
-  - { fen: "8/5Q2/kp4p1/p5P1/1P1KpP2/4P3/8/1q6 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2032, men: 12 }
-  - { fen: "8/8/2p1k1p1/1p2p1P1/p3K3/P2P4/1PP5/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 12 }
-  - { fen: "8/8/4kp1p/pp1p4/2pP1PPP/P1P1K3/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 14 }
-  - { fen: "6k1/pp4p1/2p1P1P1/3p1K2/3rp3/8/8/8 w - - 0 41", categoryPath: "/♖ vs Pawns", goal: "win", difficulty: 529, men: 11 }
-  - { fen: "8/8/4ppp1/5k1p/5P2/5KPP/8/2b5 w - - 2 39", categoryPath: "/♗ vs Pawns", goal: "win", difficulty: 557, men: 10 }
-  - { fen: "8/2k5/1p5p/1RrK2pP/6P1/8/8/8 w - - 8 63", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 1254, men: 9 }
-  - { fen: "8/1pp5/1p6/3P1kpp/PPP5/4K1P1/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 12 }
-  - { fen: "8/2k2p2/P6p/4PB1P/4K3/8/8/6b1 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "win", difficulty: 2550, men: 9 }
-  - { fen: "8/5k2/5r2/5R2/5PK1/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1969, men: 5 }
-  - { fen: "8/8/8/7p/4KPk1/4P3/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1630, men: 5 }
-  - { fen: "4k3/6R1/8/2KP4/2P5/8/6p1/6r1 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 1922, men: 7 }
-  - { fen: "8/5K2/2p5/p2p4/3k2P1/8/8/8 w - - 0 53", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 760, men: 6 }
-  - { fen: "2k5/6q1/2KP4/8/8/1Q6/8/8 w - - 0 1", categoryPath: "/♕ vs ♛", goal: "win", difficulty: 2150, men: 5 }
-  - { fen: "8/8/8/3Q4/1q2K3/8/8/7k w - - 0 1", categoryPath: "/Pure Pieces Endgames/♔♕ vs ♚♛", goal: "win", difficulty: 1722, men: 4 }
-  - { fen: "8/6k1/4P3/6K1/8/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1532, men: 3 }
-  - { fen: "8/5rk1/4Q1p1/8/5PK1/8/8/8 w - - 0 1", categoryPath: "/♕ vs ♜", goal: "win", difficulty: 2150, men: 6 }
-  - { fen: "8/4k3/4p3/3r4/4K3/7Q/8/8 w - - 0 1", categoryPath: "/♕ vs ♜", goal: "win", difficulty: 2127, men: 5 }
-  - { fen: "3K2Q1/Pk6/8/1q6/8/8/8/8 w - - 0 1", categoryPath: "/♕ vs ♛", goal: "win", difficulty: 2150, men: 5 }
-  - { fen: "8/8/4k3/3p4/8/3PPK2/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1823, men: 5 }
-  - { fen: "8/8/8/1p2k3/1P6/2PK4/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1965, men: 5 }
-  - { fen: "8/8/7R/7P/6P1/5k2/6r1/1K6 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 1913, men: 6 }
-  - { fen: "2k4b/2P5/8/6N1/8/P7/2K5/8 w - - 0 1", categoryPath: "/♗ vs ♞", goal: "win", difficulty: 2550, men: 6 }
-  - { fen: "8/8/2k5/5b2/P7/8/1P6/3K3N w - - 0 1", categoryPath: "/♗ vs ♞", goal: "win", difficulty: 2550, men: 6 }
-  - { fen: "5k2/2K5/3P4/1b5B/8/8/8/8 w - - 0 1", categoryPath: "/♗ vs ♝/Same Colour", goal: "win", difficulty: 1719, men: 5 }
-  - { fen: "8/8/8/5p2/2pr4/2k1QK2/5P2/8 b - - 7 58", categoryPath: "/♕ vs ♜", goal: "win", difficulty: 720, men: 7 }
-  - { fen: "8/2kP4/1rP5/K7/8/8/8/8 w - - 7 69", categoryPath: "/♖ vs Pawns", goal: "win", difficulty: 1392, men: 5 }
-  - { fen: "8/5k1P/5P1K/5NP1/8/2r5/8/8 b - - 4 115", categoryPath: "/♖ vs ♞", goal: "win", difficulty: 562, men: 7 }
-  - { fen: "5K1k/r4PR1/8/8/8/8/8/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2700, men: 5 }
-  - { fen: "8/8/1KR2k2/1b5p/1P6/8/8/8 b - - 0 56", categoryPath: "/♖ vs ♝", goal: "win", difficulty: 1128, men: 6 }
-  - { fen: "3k4/1n6/8/P7/8/8/7K/8 w - - 0 1", categoryPath: "/♘ vs Pawns", goal: "win", difficulty: 1791, men: 4 }
-  - { fen: "1K6/1P2q3/8/8/5Q2/8/8/7k w - - 0 1", categoryPath: "/♕ vs ♛", goal: "win", difficulty: 2150, men: 5 }
+  - { fen: "6q1/6P1/8/8/3Q4/6K1/8/1k6 w - - 0 1", categoryPath: "/♕ vs ♛", goal: "win", difficulty: 2150, men: 5 }
+  - { fen: "4K3/8/p2B2P1/8/4kP2/8/r7/8 w - - 0 1", categoryPath: "/♖ vs ♝", goal: "win", difficulty: 2400, men: 7 }
+  - { fen: "8/5k2/R5p1/5p1p/5P1P/p5P1/6K1/r7 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2300, men: 11 }
+  - { fen: "2k5/p1p5/4P3/1p6/4P1p1/1P6/2PK4/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2000, men: 10 }
   - { fen: "5k2/8/5PK1/8/8/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1502, men: 3 }
-  - { fen: "8/3K4/8/8/1p1k4/8/8/7R w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "win", difficulty: 2300, men: 4 }
-  - { fen: "6k1/R4b2/8/6K1/7P/8/8/8 w - - 0 1", categoryPath: "/♖ vs ♝", goal: "win", difficulty: 2550, men: 5 }
-  - { fen: "8/4KPkn/8/4N3/8/8/8/8 w - - 0 1", categoryPath: "/♘ vs ♞", goal: "win", difficulty: 1750, men: 5 }
-  - { fen: "8/k2K4/8/8/8/2B5/2P5/5n2 w - - 0 1", categoryPath: "/♗ vs ♞", goal: "win", difficulty: 2114, men: 5 }
-  - { fen: "8/3k4/7K/8/R4P2/8/1r6/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2027, men: 5 }
-  - { fen: "r7/k7/2K5/1PN5/8/8/8/8 w - - 0 1", categoryPath: "/♖ vs ♞", goal: "win", difficulty: 1750, men: 5 }
-  - { fen: "8/8/6p1/p5Pp/4k2P/8/P1K5/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1939, men: 8 }
-  - { fen: "8/5p2/4p2p/p3P2P/2K1PP2/k7/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1966, men: 10 }
-  - { fen: "6k1/5p1p/4p1p1/8/2r5/6P1/5P1P/1R4K1 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2300, men: 11 }
-  - { fen: "8/p7/Pp6/8/2k2K1p/5P1P/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2028, men: 8 }
-  - { fen: "8/8/3k3p/7P/4KPp1/p7/P7/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 8 }
-  - { fen: "8/8/p2p4/2p3kp/1pP5/1P1P2KP/P7/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2000, men: 12 }
-  - { fen: "8/8/2B3p1/7p/7P/4k1P1/1r6/6K1 w - - 0 1", categoryPath: "/♖ vs ♝", goal: "draw", difficulty: 2400, men: 8 }
-  - { fen: "8/7p/6b1/p2k2P1/3B4/4p1K1/8/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 2550, men: 8 }
-  - { fen: "8/8/3r1pk1/4p1p1/1R6/5PP1/6K1/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2300, men: 9 }
-  - { fen: "8/6k1/3p2p1/p2p2Pp/2pP1P2/PpP3K1/1P6/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2000, men: 15 }
-  - { fen: "k7/6p1/p6p/1pp2P2/8/P3B1P1/KP6/5n2 w - - 0 1", categoryPath: "/♗ vs ♞", goal: "draw", difficulty: 2184, men: 13 }
-  - { fen: "8/7p/6p1/1k1p4/3P2P1/1K6/7P/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1577, men: 8 }
-  - { fen: "8/pp4k1/8/1P5K/2pp1p2/8/2PP2PP/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2000, men: 12 }
+  - { fen: "6k1/4P3/3KP3/8/8/8/3r4/8 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "win", difficulty: 2700, men: 5 }
+  - { fen: "8/8/1p4pp/1p3p2/5PPP/3K4/k7/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 10 }
+  - { fen: "8/8/8/7K/1B3k2/5n2/4p3/8 w - - 0 1", categoryPath: "/♗ vs ♞", goal: "draw", difficulty: 2150, men: 5 }
+  - { fen: "8/8/6p1/pk2K1Pp/7P/5P2/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2032, men: 8 }
+  - { fen: "8/6p1/8/7k/4PK2/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1650, men: 4 }
+  - { fen: "1k6/8/8/p7/8/r4RK1/5P2/8 b - - 0 56", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 758, men: 6 }
+  - { fen: "8/8/8/1KP3p1/7p/8/5k2/4q2R w - - 0 58", categoryPath: "/♕ vs ♜", goal: "win", difficulty: 970, men: 7 }
+  - { fen: "8/4k3/4p3/3r4/4K3/7Q/8/8 w - - 0 1", categoryPath: "/♕ vs ♜", goal: "win", difficulty: 2127, men: 5 }
+  - { fen: "8/1B6/Pb3k1K/8/4P3/8/8/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "win", difficulty: 2150, men: 6 }
+  - { fen: "8/8/8/3p2p1/k2Pp3/P3P3/2P2K2/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 9 }
+  - { fen: "8/8/1kpN2p1/n7/1K4PP/8/8/8 w - - 0 1", categoryPath: "/♘ vs ♞", goal: "win", difficulty: 1729, men: 8 }
+  - { fen: "8/8/2p3k1/8/3PPK2/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1936, men: 5 }
+  - { fen: "6r1/4R3/8/3k4/6P1/6K1/8/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2300, men: 5 }
+  - { fen: "8/r7/5pp1/p5kp/R7/6P1/5P1P/6K1 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2700, men: 11 }
+  - { fen: "5r1k/6p1/1p5p/8/8/2P5/PP2p1PP/4R2K b - - 0 26", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 458, men: 13 }
+  - { fen: "2k5/5p2/2P5/2K3p1/5p1p/8/5PPP/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 10 }
+  - { fen: "8/1p6/8/3k4/PP6/2K5/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1595, men: 5 }
+  - { fen: "4R3/5r2/8/8/4p3/4k3/2K5/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2300, men: 5 }
+  - { fen: "7B/8/8/8/5pp1/5k2/3K4/8 w - - 0 1", categoryPath: "/♗ vs Pawns", goal: "draw", difficulty: 1750, men: 5 }
+  - { fen: "2R5/p7/k7/n7/K7/8/8/8 w - - 0 1", categoryPath: "/♖ vs ♞", goal: "win", difficulty: 1750, men: 5 }
   - { fen: "8/7p/p7/1p1k2p1/P5P1/1P1K3P/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 10 }
-  - { fen: "8/8/8/1p2kp2/1P4p1/4KP2/5P2/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1524, men: 8 }
-  - { fen: "8/pp6/8/1PP1k3/7p/8/P5K1/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2028, men: 8 }
-  - { fen: "8/pp4pp/2nk1p2/5P2/3prNP1/P1P4P/1P6/2KR4 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 18 }
-  - { fen: "2B5/8/3kp3/1P3pp1/3b4/7P/6K1/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 2550, men: 9 }
-  - { fen: "8/p7/1p1k4/8/3Pp3/1P6/P1K5/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 8 }
-  - { fen: "8/8/8/1p2kpp1/1P6/4KP2/5P2/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 8 }
-  - { fen: "8/7p/p1p1k3/1p6/1P1P4/K7/2P4P/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 10 }
-  - { fen: "8/8/pB2b1p1/6k1/K1p5/2P5/1P6/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 2550, men: 9 }
-  - { fen: "8/8/p3k3/1p6/1P2pP2/P5p1/6K1/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 9 }
-  - { fen: "5K1k/8/2Q2P2/p7/8/7p/q5p1/8 w - - 0 1", categoryPath: "/♕ vs ♛", goal: "draw", difficulty: 2550, men: 8 }
-  - { fen: "8/8/5kpp/p2p4/P2P1PKP/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2030, men: 10 }
-  - { fen: "6k1/R6p/1p2p1p1/2p5/2P2PP1/2P1K2r/8/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2700, men: 13 }
-  - { fen: "8/8/p3p2p/4p1k1/PK2P3/5P2/1P6/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2038, men: 10 }
-  - { fen: "8/8/2B4k/7p/6pP/6P1/2r5/6K1 w - - 0 1", categoryPath: "/♖ vs ♝", goal: "draw", difficulty: 2400, men: 8 }
-  - { fen: "8/8/7p/2p1k2P/1pPp4/pP1P2KP/P4p2/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2000, men: 14 }
-  - { fen: "8/8/2Bb1p2/6pp/8/6kP/6P1/5K2 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 1730, men: 9 }
-  - { fen: "8/5r2/8/6k1/6p1/8/4K3/6R1 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 1875, men: 5 }
-  - { fen: "8/5K2/8/8/8/1N2k3/p7/8 w - - 0 1", categoryPath: "/♘ vs Pawns", goal: "draw", difficulty: 2150, men: 4 }
-  - { fen: "8/8/4k1KP/8/8/8/8/r7 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "draw", difficulty: 2300, men: 4 }
-  - { fen: "8/6n1/8/8/8/8/N1Kpk3/8 w - - 0 1", categoryPath: "/♘ vs ♞", goal: "draw", difficulty: 1813, men: 5 }
+  - { fen: "2K5/k7/2P5/8/8/7r/1R6/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2433, men: 5 }
+  - { fen: "3K4/8/p1B5/P7/1Pb5/2k5/8/8 w - - 0 1", categoryPath: "/♗ vs ♝/Same Colour", goal: "win", difficulty: 2550, men: 7 }
+  - { fen: "6k1/1p3p2/pP1r3p/3P2p1/8/6P1/5P1P/2R3K1 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2300, men: 14 }
+  - { fen: "5K1N/8/8/7k/3p4/8/8/8 w - - 0 1", categoryPath: "/♘ vs Pawns", goal: "draw", difficulty: 2550, men: 4 }
+  - { fen: "8/6k1/8/1p6/2b5/2K5/2N1p3/8 w - - 0 1", categoryPath: "/♗ vs ♞", goal: "draw", difficulty: 2550, men: 6 }
+  - { fen: "8/8/pK6/Pp5p/1B4k1/8/8/8 b - - 1 43", categoryPath: "/♗ vs Pawns", goal: "win", difficulty: 804, men: 7 }
+  - { fen: "1k6/8/1b2pp2/6p1/2P4p/5K1P/2B5/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 2150, men: 10 }
+  - { fen: "8/1pp1k3/6p1/4K3/1PP5/6P1/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 8 }
+  - { fen: "8/8/8/4P3/2k5/6K1/8/2n5 w - - 0 1", categoryPath: "/♘ vs Pawns", goal: "win", difficulty: 2550, men: 4 }
+  - { fen: "8/6p1/7p/4k3/8/1K3PP1/6P1/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 7 }
+  - { fen: "8/8/8/1P6/p1Pb2B1/6pp/2k3P1/7K w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 2150, men: 10 }
+  - { fen: "8/8/8/8/6pR/5p1p/5K1k/8 b - - 1 73", categoryPath: "/♖ vs Pawns", goal: "win", difficulty: 739, men: 6 }
+  - { fen: "7R/8/1p5P/p1k5/P1P5/7r/4K3/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2153, men: 9 }
   - { fen: "7K/8/6k1/7p/8/8/7P/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1800, men: 4 }
-  - { fen: "8/7p/3p4/8/6pP/8/4PK2/7k w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 7 }
-  - { fen: "8/4k3/7P/6K1/8/1P6/8/4r3 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "draw", difficulty: 2300, men: 5 }
-  - { fen: "K7/8/8/2p5/Pp6/8/1P5k/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2000, men: 6 }
-  - { fen: "2R5/8/8/8/3p4/3k4/6r1/3K4 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2700, men: 5 }
-  - { fen: "8/8/2K4R/8/5p2/5kp1/8/8 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "draw", difficulty: 1900, men: 5 }
-  - { fen: "8/1b6/8/8/8/5k1p/7P/6K1 w - - 0 1", categoryPath: "/♗ vs Pawns", goal: "draw", difficulty: 1771, men: 5 }
-  - { fen: "K7/5p2/7B/8/p7/8/8/1k6 w - - 0 1", categoryPath: "/♗ vs Pawns", goal: "draw", difficulty: 2550, men: 5 }
-  - { fen: "8/2pr4/8/5K1p/8/2R5/6k1/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2300, men: 6 }
-  - { fen: "8/8/5p2/8/3k2K1/8/1pBb4/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 1750, men: 6 }
-  - { fen: "8/8/8/1kp5/8/8/8/K7 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1615, men: 3 }
-  - { fen: "8/4KR2/4p3/4k3/r7/8/8/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2500, men: 5 }
-  - { fen: "8/8/K7/N7/8/7p/7k/8 w - - 0 1", categoryPath: "/♘ vs Pawns", goal: "draw", difficulty: 2150, men: 4 }
-  - { fen: "8/7p/8/5kp1/8/5K2/7P/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2400, men: 5 }
-  - { fen: "8/8/5k2/r2p1p2/5K2/3R4/8/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 1980, men: 6 }
-  - { fen: "8/8/2p5/8/2k1K3/2r5/8/1R6 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2500, men: 5 }
-  - { fen: "3r4/1R6/8/8/8/8/p4K2/k7 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 1874, men: 5 }
-  - { fen: "8/1p6/2p1n3/6k1/1K6/5B2/8/8 w - - 0 1", categoryPath: "/♗ vs ♞", goal: "draw", difficulty: 2150, men: 6 }
-  - { fen: "R7/8/8/8/8/4pk2/1r6/4K3 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 1872, men: 5 }
-  - { fen: "8/8/8/8/pp1k4/8/PK6/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1398, men: 5 }
-  - { fen: "8/8/6p1/4K1k1/8/8/6r1/7R w - - 0 1", categoryPath: "/♖ vs ♜", goal: "draw", difficulty: 2500, men: 5 }
-  - { fen: "8/8/8/1PK4r/8/2k5/8/8 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "draw", difficulty: 2300, men: 4 }
-  - { fen: "8/7r/P1P5/8/8/6K1/8/6k1 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "draw", difficulty: 2300, men: 5 }
-  - { fen: "8/1k6/5p2/6p1/3K4/8/4P3/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2033, men: 5 }
-  - { fen: "8/R7/8/8/5K2/p7/2p5/2k5 w - - 0 1", categoryPath: "/♖ vs Pawns", goal: "draw", difficulty: 2300, men: 5 }
-  - { fen: "8/8/p7/kp2K3/4P3/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2000, men: 5 }
+  - { fen: "8/8/8/1rB5/4k3/5p2/8/5K2 w - - 0 1", categoryPath: "/♖ vs ♝", goal: "draw", difficulty: 2150, men: 5 }
+  - { fen: "1k6/8/1P6/4K3/2BpP3/3P4/8/2r5 b - - 0 59", categoryPath: "/♖ vs ♝", goal: "win", difficulty: 975, men: 8 }
+  - { fen: "8/8/p3k3/1p2p3/4P1pP/3K2P1/P7/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 10 }
+  - { fen: "8/8/8/8/R7/1P6/K1qk4/8 w - - 0 1", categoryPath: "/♕ vs ♜", goal: "draw", difficulty: 2192, men: 5 }
+  - { fen: "7k/7P/7K/2p3P1/2P5/1n6/8/8 w - - 0 49", categoryPath: "/♘ vs Pawns", goal: "win", difficulty: 612, men: 7 }
+  - { fen: "8/8/6R1/8/2k3K1/4P3/8/5r2 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2500, men: 5 }
+  - { fen: "8/1p3pp1/p1krpn1p/P6P/2P2PP1/2B5/1PK5/4R3 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 18 }
+  - { fen: "3k4/8/2PP4/4K3/1b6/3B4/8/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "win", difficulty: 1750, men: 6 }
+  - { fen: "8/6p1/5p1p/p2P1k2/2K5/7P/5PP1/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 1761, men: 10 }
+  - { fen: "8/8/3R4/2k5/4P1r1/4K3/8/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2326, men: 5 }
+  - { fen: "8/8/8/8/4B3/1k6/p6r/K7 w - - 0 1", categoryPath: "/♖ vs ♝", goal: "draw", difficulty: 2150, men: 5 }
+  - { fen: "8/7r/3k4/5P2/8/6K1/4R3/8 w - - 0 1", categoryPath: "/♖ vs ♜", goal: "win", difficulty: 2300, men: 5 }
+  - { fen: "8/8/8/p7/8/1k6/3K4/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 1561, men: 3 }
+  - { fen: "8/8/p7/P3k3/1KP5/8/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2000, men: 5 }
+  - { fen: "5k2/8/1p2K3/p4P1p/P1P5/1P6/8/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "win", difficulty: 2400, men: 9 }
+  - { fen: "2Bb4/8/3k4/3pp3/8/4K3/8/8 w - - 0 1", categoryPath: "/♗ vs ♝/Opposite Colour", goal: "draw", difficulty: 2150, men: 6 }
+  - { fen: "8/pp6/8/1PP1k3/7p/8/P5K1/8 w - - 0 1", categoryPath: "/Pawn Endgames", goal: "draw", difficulty: 2028, men: 8 }
+  - { fen: "8/8/8/P7/1P6/1K2b3/8/3k4 w - - 0 1", categoryPath: "/♗ vs Pawns", goal: "win", difficulty: 1727, men: 5 }

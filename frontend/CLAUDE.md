@@ -316,11 +316,13 @@ A CLI wrapper around the bundled engine is available for ad-hoc position analysi
 tuned without guessing. It runs either as a gated Vitest suite or as a CLI script, on the
 engine adapters in `src/measurements/shared/`.
 
-- **`engine-playout/`** — plays a fixed 120-puzzle sample against a strong Syzygy-backed
-  engine standing in for the user, and scores how long the defense lasted and how tricky it
-  made the user's positions. Draw goals and positions with more than 7 men are included.
-  Run: `node scripts/measure-engine-playout.mjs` or
-  `RUN_PLAYOUT_MEASUREMENT=1 vp test --run enginePlayout`. A full run costs about an hour of
+- **`engine-playout/`** — plays a fixed 64-puzzle sample of the catalog (uniformly drawn, so
+  the mix of goals and sizes is the catalog's own) six times each against a strong
+  Syzygy-backed engine standing in for the user, and scores how long the defense lasted and
+  how tricky it made the user's positions. Draw goals and positions too big for any tablebase
+  are included; draw goals are scored on trickiness alone.
+  Run: `node scripts/measure-engine-playout.mjs` (`--continue` resumes an interrupted run) or
+  `RUN_PLAYOUT_MEASUREMENT=1 vp test --run enginePlayout`. A full run costs 2–3 hours of
   saturated CPU and its committed baseline/puzzle-set YAMLs must not be casually
   regenerated → **read [`src/measurements/engine-playout/CLAUDE.md`](src/measurements/engine-playout/CLAUDE.md)
   before working in there.**

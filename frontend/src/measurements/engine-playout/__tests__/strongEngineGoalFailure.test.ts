@@ -9,7 +9,7 @@ const DRAWN_PUZZLE = { fen: '6k1/R4b2/8/6K1/7P/8/8/8 w - - 0 1', goal: 'draw' }
 
 // Only the two fields the verdict reads; the rest of a playout has no say in it
 function playout(endReason: PlayoutEndReason, finalFen: string): PlayoutResult {
-  return { endReason, finalFen, plies: [], defenderMoveTimesMs: [] }
+  return { endReason, finalFen, plies: [], defenderMoveTimesMs: [], defenderTablebaseLookups: [] }
 }
 
 // Side to move is the side that stands checkmated

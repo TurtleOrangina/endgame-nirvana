@@ -14,9 +14,9 @@ globalThis.__APP_BUILD_ID__ = 'move-divergence'
 
 const { values } = parseArgs({
   options: {
-    detail: { type: 'string', default: 'engine-playout-detail.json' },
+    detail: { type: 'string', default: '.playout-runs/run.jsonl' },
     baseline: { type: 'string', default: 'move-selector' },
-    variant: { type: 'string', default: 'trickster-focused' },
+    variant: { type: 'string', default: 'move-selector' },
     out: { type: 'string', default: 'engine-playout-puzzles-divergent.yaml' },
     'per-playout': { type: 'string', default: '3' },
     goal: { type: 'string', default: 'win' },
@@ -28,9 +28,9 @@ const { values } = parseArgs({
 if (values.help) {
   console.log(`Usage: node scripts/find-move-divergence.mjs [options]
 
-  --detail <file>       per-ply detail to lift positions from (default engine-playout-detail.json)
+  --detail <file>       per-ply detail to lift positions from (default .playout-runs/run.jsonl)
   --baseline <kind>     defender to compare against (default move-selector)
-  --variant <kind>      defender under test (default trickster-focused)
+  --variant <kind>      defender under test (default move-selector)
   --out <file>          puzzle set to write (default engine-playout-puzzles-divergent.yaml)
   --per-playout <n>     positions sampled per recorded playout (default 3)
   --goal <win|draw|any> only lift positions from puzzles with this goal (default win)

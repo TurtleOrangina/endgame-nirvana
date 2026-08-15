@@ -161,10 +161,11 @@ export function formatInFlightComparison(
     0,
     { unit: 'ms', higherIsBetter: false, color },
   )
+  // No delay on draws: holding a draw for longer is not a better defense, only a trickier
+  // one is, so it is neither reported nor compared (see report.ts's summarizeGroup)
   return (
     `In flight comparison vs ${options.baselineName ?? 'baseline'}: ` +
     `delay(wins): ${delay('win')}, trickiness(wins): ${trickiness('win')}, ` +
-    `delay(draws): ${delay('draw')}, trickiness(draws): ${trickiness('draw')}, ` +
-    `thinking_time: ${thinkingTime}`
+    `trickiness(draws): ${trickiness('draw')}, thinking_time: ${thinkingTime}`
   )
 }

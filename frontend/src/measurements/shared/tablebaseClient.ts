@@ -46,12 +46,51 @@ export interface TablebaseClient {
   installFetchInterception(): void
   networkRequestCount(): number
   cacheHitCount(): number
+  /**
+   * Called on every lookup — cached ones included — with the position's cache key, and
+   * returns a function that removes the listener again. This is how the playout counts the
+   * tablebase work behind a defender move: what matters there is which positions the
+   * defender consulted, not which of them happened to still need the network.
+   */
+  addLookupListener(listener: (positionKey: string) => void): () => void
 }
 
 // The halfmove clock stays in the key: it decides whether a win still fits within the
 // 50-move rule (cursed wins). The fullmove number never affects the answer.
 function cacheKey(fen: string): string {
   return fen.split(' ').slice(0, 5).join(' ')
+}
+
+/**
+ * A client that has no tablebase at all: every lookup fails the way `fetch` fails with no
+ * network, and nothing is ever cached or counted. It exists so a defender can be measured
+ * under the conditions an offline user plays under — the app keeps working offline, and the
+ * selector then has to defend on the engine search alone.
+ *
+ * The failure is a rejection rather than a hang because that is what a browser does offline;
+ * either way `useMoveSelector` never awaits its own lookup, so a request that resolves too
+ * late and one that never resolves are the same opponent.
+ */
+export function createOfflineTablebaseClient(): TablebaseClient {
+  const networkFetch = globalThis.fetch.bind(globalThis)
+  const offlineError = (): Error => new TypeError('fetch failed (offline tablebase)')
+
+  return {
+    lookup: () => Promise.reject(offlineError()),
+    installFetchInterception: () => {
+      globalThis.fetch = async (input, init) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        if (!url.startsWith(TABLEBASE_URL)) return networkFetch(input, init)
+        throw offlineError()
+      }
+    },
+    networkRequestCount: () => 0,
+    cacheHitCount: () => 0,
+    // No lookup ever happens, so there is nothing to notify about: the playout's tablebase
+    // coverage comes out at 0%, which is exactly what this defender is
+    addLookupListener: () => () => {},
+  }
 }
 
 export function createTablebaseClient(
@@ -66,6 +105,7 @@ export function createTablebaseClient(
   const memoryCache = new Map<string, Promise<RawTablebasePosition>>()
   let networkRequests = 0
   let cacheHits = 0
+  const lookupListeners = new Set<(positionKey: string) => void>()
   // Serializes every network request and spaces them out; each lookup chains onto the
   // previous one, so requests can never overlap however many callers are waiting.
   let requestChain: Promise<unknown> = Promise.resolve()
@@ -111,6 +151,7 @@ export function createTablebaseClient(
 
   function lookup(fen: string): Promise<RawTablebasePosition> {
     const key = cacheKey(fen)
+    for (const listener of lookupListeners) listener(key)
     const inFlight = memoryCache.get(key)
     if (inFlight) {
       cacheHits++
@@ -156,5 +197,9 @@ export function createTablebaseClient(
     installFetchInterception,
     networkRequestCount: () => networkRequests,
     cacheHitCount: () => cacheHits,
+    addLookupListener: (listener) => {
+      lookupListeners.add(listener)
+      return () => lookupListeners.delete(listener)
+    },
   }
 }
