@@ -188,7 +188,15 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
   only reads CSS variables, which `applyBoardTheme`/`applyPieceSet` point at the
   selected files. No per-theme CSS is generated and the browser downloads only what
   the variables currently reference; `preloadAssets.ts` fetches the active set first
-  and then, on idle, everything else, so all options stay selectable offline.
+  and then, on idle, everything else, so all options stay selectable offline. The active
+  set is then *shown* from those downloaded bytes (a `blob:` URL swapped into the same
+  variable): a `background-image` whose own request failed — which happens on a first
+  visit, where the piece SVGs compete with the engine download for the connection — is
+  never retried by the browser and reports no error anywhere, so the piece stayed
+  invisible until a reload. Retrying the fetch only warms the cache; repointing the
+  variable is what fixes the board. Each fetch is also aborted after a timeout: on that
+  same first visit a request can stall behind the engine download instead of failing,
+  and a promise that never settles is not something the retry loop can see.
 - `src/types.ts` — shared domain types (results, engine, tablebase, profile).
 - `src/types/database.ts` — generated Supabase schema types (see Backend below).
 - `src/main.ts` — entry point; mounts the app and imports Chessground/board CSS.

@@ -186,14 +186,25 @@ export function pieceImageUrls(id: PieceSetId): string[] {
 export function applyBoardTheme(id: BoardThemeId): void {
   const theme = BOARD_THEMES[id]
   const style = document.documentElement.style
-  style.setProperty('--board-image', `url('${boardImageUrl(id)}')`)
+  showBoardImage(boardImageUrl(id))
   style.setProperty('--coord-on-light-square', theme.coordOnLightSquare)
   style.setProperty('--coord-on-dark-square', theme.coordOnDarkSquare)
 }
 
 export function applyPieceSet(id: PieceSetId): void {
-  const style = document.documentElement.style
   for (const code of PIECE_CODES) {
-    style.setProperty(`--piece-${code}`, `url('${pieceImageUrl(id, code)}')`)
+    showPieceImage(code, pieceImageUrl(id, code))
   }
+}
+
+// The two functions below also take a blob: URL of an already-downloaded copy of the
+// image, which is how preloadAssets.ts repoints the board at bytes it has confirmed:
+// a background-image whose own load failed is never retried by the browser, so
+// without that the piece stays invisible until the page is reloaded.
+export function showBoardImage(url: string): void {
+  document.documentElement.style.setProperty('--board-image', `url('${url}')`)
+}
+
+export function showPieceImage(code: PieceCode, url: string): void {
+  document.documentElement.style.setProperty(`--piece-${code}`, `url('${url}')`)
 }

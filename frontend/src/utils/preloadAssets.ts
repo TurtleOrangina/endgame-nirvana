@@ -2,9 +2,13 @@ import {
   BOARD_THEME_IDS,
   boardImageUrl,
   boardThemeOrDefault,
+  PIECE_CODES,
   PIECE_SET_IDS,
+  pieceImageUrl,
   pieceImageUrls,
   pieceSetOrDefault,
+  showBoardImage,
+  showPieceImage,
   type BoardThemeId,
   type PieceSetId,
 } from '@/utils/boardAppearance'
@@ -16,6 +20,34 @@ const MAX_RETRY_DELAY_MS = 5 * 60_000
 // few at a time; the active set is small enough to stay under this anyway.
 const MAX_PARALLEL_DOWNLOADS = 6
 const IDLE_PREFETCH_DELAY_MS = 10_000
+// A request that never settles is not a failure the retry loop can see, so it would sit
+// there forever holding its asset back — which is exactly what a first visit produces,
+// where these requests queue behind the multi-megabyte engine download and can stall
+// well past any useful wait. Aborting turns that stall into a plain failure, which the
+// loop already knows how to retry (by then usually against a warm connection).
+const DOWNLOAD_TIMEOUT_MS = 20_000
+
+// An asset to download, plus — for the set that is actually on the board — where to
+// show it once its bytes are in hand.
+interface DownloadTarget {
+  url: string
+  display?: (blob: Blob) => void
+}
+
+// Keyed by the CSS variable the image is shown in, so the blob: URL that variable
+// currently points at can be revoked once it has been replaced.
+const shownObjectUrlsByVariable = new Map<string, string>()
+
+// Bumped on every appearance change, so downloads still in flight for a set the user
+// has since switched away from don't put that old set back on the board.
+let activeAppearanceGeneration = 0
+
+// The board theme and piece set currently being downloaded/displayed. App.vue watches
+// the two profile fields separately, so both watchers fire on startup with the very
+// same appearance; without this the whole active set would be downloaded twice, and the
+// duplicate requests compete for the connection precisely on the first visit this is
+// meant to rescue.
+let appearanceBeingShown: string | undefined
 
 // fetch() rather than new Image(): an Image gave no completion signal, so on a bad
 // connection a piece whose download failed was silently never retried — leaving e.g. a
@@ -30,13 +62,43 @@ const IDLE_PREFETCH_DELAY_MS = 10_000
 // position happens to lack e.g. a black queen would leave bQ.svg undownloaded — invisible
 // if the user goes offline before ever encountering one (say, via a promotion). Preloading
 // the whole active set up front (it's tiny) means it is always cached before it's needed.
+//
+// The active set is additionally *displayed* from the downloaded bytes (a blob: URL per
+// image) rather than left to a second, independent browser image load: that load is the
+// one that goes wrong on a first visit, where the piece SVGs compete with the engine and
+// the catalog for the connection. A background-image whose request fails is never retried
+// by the browser and no error surfaces anywhere, so the piece simply stayed invisible
+// until the user reloaded the page. Retrying the fetch here fixed only the cache, not
+// the board; pointing the CSS variable at the confirmed bytes fixes the board.
 export function preloadActiveAppearanceAssets(
   pieceSet: string | undefined,
   boardTheme: string | undefined,
 ): void {
+  const set = pieceSetOrDefault(pieceSet)
+  const theme = boardThemeOrDefault(boardTheme)
+  if (appearanceBeingShown === `${set}/${theme}`) return
+  appearanceBeingShown = `${set}/${theme}`
+  const generation = ++activeAppearanceGeneration
+
+  // A download that lands after the user has switched appearance is discarded rather
+  // than shown — including its object URL, which must not take over the variable the
+  // now-current set is being displayed from.
+  const displayInVariable =
+    (variable: string, show: (objectUrl: string) => void) =>
+    (blob: Blob): void => {
+      if (generation !== activeAppearanceGeneration) return
+      show(replaceObjectUrl(variable, blob))
+    }
+
   void retryUntilAllDownloaded([
-    ...pieceImageUrls(pieceSetOrDefault(pieceSet)),
-    boardImageUrl(boardThemeOrDefault(boardTheme)),
+    ...PIECE_CODES.map((code) => ({
+      url: pieceImageUrl(set, code),
+      display: displayInVariable(`piece-${code}`, (objectUrl) => showPieceImage(code, objectUrl)),
+    })),
+    {
+      url: boardImageUrl(theme),
+      display: displayInVariable('board', showBoardImage),
+    },
   ])
 }
 
@@ -56,7 +118,7 @@ export function prefetchAllAppearanceAssets(
     ...PIECE_SET_IDS.filter((id: PieceSetId) => id !== activeSet).flatMap(pieceImageUrls),
     ...BOARD_THEME_IDS.filter((id: BoardThemeId) => id !== activeTheme).map(boardImageUrl),
   ]
-  whenIdle(() => void retryUntilAllDownloaded(urls))
+  whenIdle(() => void retryUntilAllDownloaded(urls.map((url) => ({ url }))))
 }
 
 function whenIdle(run: () => void): void {
@@ -67,24 +129,25 @@ function whenIdle(run: () => void): void {
   }
 }
 
-async function retryUntilAllDownloaded(urls: string[]): Promise<void> {
-  let remaining = urls
+async function retryUntilAllDownloaded(targets: DownloadTarget[]): Promise<void> {
+  let remaining = targets
   let retryDelayMs = INITIAL_RETRY_DELAY_MS
   while (remaining.length > 0) {
-    remaining = await fetchAllReturningFailed(remaining)
+    remaining = await downloadAllReturningFailed(remaining)
     if (remaining.length === 0) return
     await connectivityRegainedOrTimeout(retryDelayMs)
     retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_DELAY_MS)
   }
 }
 
-async function fetchAllReturningFailed(urls: string[]): Promise<string[]> {
-  const pending = [...urls]
-  const failed: string[] = []
+async function downloadAllReturningFailed(targets: DownloadTarget[]): Promise<DownloadTarget[]> {
+  const pending = [...targets]
+  const failed: DownloadTarget[] = []
   const workers = Array.from({ length: Math.min(MAX_PARALLEL_DOWNLOADS, pending.length) }, () =>
     (async () => {
-      for (let url = pending.shift(); url !== undefined; url = pending.shift()) {
-        if (!(await downloadedSuccessfully(url))) failed.push(url)
+      for (let target = pending.shift(); target !== undefined; target = pending.shift()) {
+        if (await downloadedSuccessfully(target)) continue
+        failed.push(target)
       }
     })(),
   )
@@ -92,12 +155,37 @@ async function fetchAllReturningFailed(urls: string[]): Promise<string[]> {
   return failed
 }
 
-async function downloadedSuccessfully(url: string): Promise<boolean> {
+async function downloadedSuccessfully(target: DownloadTarget): Promise<boolean> {
+  const blob = await downloadedBlob(target.url)
+  if (!blob) return false
+  target.display?.(blob)
+  return true
+}
+
+async function downloadedBlob(url: string): Promise<Blob | null> {
+  const abortStalled = new AbortController()
+  const timeout = setTimeout(() => abortStalled.abort(), DOWNLOAD_TIMEOUT_MS)
   try {
-    return (await fetch(url)).ok
+    const response = await fetch(url, { signal: abortStalled.signal })
+    if (!response.ok) return null
+    const blob = await response.blob()
+    // An empty body still arrives as a perfectly ok response, and showing the board a
+    // blob: URL of nothing would leave the piece just as invisible — with the retry
+    // loop believing it had succeeded. Treat it as a failure so it is fetched again.
+    return blob.size > 0 ? blob : null
   } catch {
-    return false
+    return null
+  } finally {
+    clearTimeout(timeout)
   }
+}
+
+function replaceObjectUrl(variable: string, blob: Blob): string {
+  const objectUrl = URL.createObjectURL(blob)
+  const previous = shownObjectUrlsByVariable.get(variable)
+  if (previous) URL.revokeObjectURL(previous)
+  shownObjectUrlsByVariable.set(variable, objectUrl)
+  return objectUrl
 }
 
 // Resolves when the browser reports connectivity came back, or after delayMs at the
