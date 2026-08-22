@@ -12,6 +12,11 @@ export const PREMOVE_THINKING_TIME_MS = 50
 // Second opinion before failing a puzzle (or trusting a zeroing move) on an
 // engine-only verdict, when no authoritative tablebase answer is available
 export const FAILURE_RECHECK_THINKING_TIME_MS = 400
+// Ceiling for checking whether a capture that appears to end the game really does (see
+// useMoveSelector's capture probe). Only an ambiguous evaluation ever costs the full
+// budget: the check stops the search as soon as the running score is clear enough to
+// classify, which in these near-empty positions is usually within the first few depths.
+export const CAPTURE_SOUNDNESS_THINKING_TIME_MS = 100
 
 // Physical core count isn't exposed by browsers; hardwareConcurrency reports logical
 // cores, typically 2× physical with SMT — halving approximates the physical count.

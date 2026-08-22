@@ -40,6 +40,7 @@ interface QueuedSearch {
   lines: number
   thinkingTimeMs: number
   resolve: (lines: EngineLine[]) => void
+  onProgress?: (lines: EngineLine[]) => void
 }
 
 export function createUciProcessEngine(options: UciProcessEngineOptions): UciProcessEngine {
@@ -54,6 +55,7 @@ export function createUciProcessEngine(options: UciProcessEngineOptions): UciPro
   const send = (command: string): void => void process.stdin.write(`${command}\n`)
 
   let resolveCurrentSearch: ((lines: EngineLine[]) => void) | null = null
+  let onProgressCurrentSearch: ((lines: EngineLine[]) => void) | null = null
   let syzygyFileCount: number | null = null
   // The engine handles one search at a time, so overlapping callers queue up instead of
   // racing. The app's engine wrapper aborts the running search instead; the measurements
@@ -70,6 +72,7 @@ export function createUciProcessEngine(options: UciProcessEngineOptions): UciPro
     isThinking.value = true
     collector.reset()
     resolveCurrentSearch = next.resolve
+    onProgressCurrentSearch = next.onProgress ?? null
     send(`setoption name MultiPV value ${next.lines}`)
     send(
       next.moves.length > 0
@@ -92,10 +95,14 @@ export function createUciProcessEngine(options: UciProcessEngineOptions): UciPro
     } else if (line.startsWith('info')) {
       const syzygyReport = SYZYGY_LOAD_REPORT.exec(line)
       if (syzygyReport) syzygyFileCount = Number(syzygyReport[1])
-      if (resolveCurrentSearch) collector.consumeInfo(line)
+      if (resolveCurrentSearch) {
+        const updatedLines = collector.consumeInfo(line)
+        if (updatedLines) onProgressCurrentSearch?.(updatedLines)
+      }
     } else if (line.startsWith('bestmove') && resolveCurrentSearch) {
       const resolve = resolveCurrentSearch
       resolveCurrentSearch = null
+      onProgressCurrentSearch = null
       resolve(collector.finish(line))
       collector.reset()
       startNextSearch()
@@ -114,10 +121,11 @@ export function createUciProcessEngine(options: UciProcessEngineOptions): UciPro
     lines: number,
     thinkingTimeMs: number,
     moves: string[] = [],
+    onProgress?: (lines: EngineLine[]) => void,
   ): Promise<EngineLine[]> {
     await waitForReady()
     return new Promise<EngineLine[]>((resolve) => {
-      queue.push({ fen, moves, lines, thinkingTimeMs, resolve })
+      queue.push({ fen, moves, lines, thinkingTimeMs, resolve, onProgress })
       if (!resolveCurrentSearch) startNextSearch()
     })
   }

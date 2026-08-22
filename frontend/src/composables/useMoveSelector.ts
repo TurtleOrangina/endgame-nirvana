@@ -9,6 +9,7 @@ import type {
   TablebaseResult,
 } from '@/types'
 import {
+  CAPTURE_SOUNDNESS_THINKING_TIME_MS,
   FAILURE_RECHECK_THINKING_TIME_MS,
   PREMOVE_THINKING_TIME_MS,
   PROBE_THINKING_TIME_MS,
@@ -68,6 +69,18 @@ const STABLE_BALANCE_RUN_HALFMOVES = 3
 // Falling this many pawns of material below the top line's stable balance, sustained over
 // the deficit window, makes a position "done" — the deficit incurred is too high to matter
 const DONE_MATERIAL_DEFICIT = 2
+// How far from scoreToOutcome's ±100cp boundary an evaluation has to sit before the
+// capture probe stops searching. Past the decisive mark the boundary is cleared for good,
+// below the level mark it is missed for good; only the span between them is worth more
+// search time, since that is where another few plies still change the classification.
+const SETTLED_DECISIVE_CP = 250
+const SETTLED_LEVEL_CP = 10
+// How long into a move selection the capture probe may still spend engine time verifying
+// captures. Every half-move of every candidate line can offer one, so an unlucky position
+// could otherwise queue up dozens of searches and leave the board silent long enough to
+// read as a hang. Past this point captures go unverified — and an unverified capture is
+// not counted as done, which is exactly the reading the probe had before it could check.
+const SKIP_SOUNDNESS_CHECKS_AFTER_MS = 1000
 // Halfmoves the deficit must hold; a line that ends inside the window still counts as
 // done when at least one of its remaining positions shows the deficit (the engine's PV
 // is often too short to hold a late promotion for the full window)
@@ -112,6 +125,35 @@ function asPercent(value: number): string {
 // A candidate the Trickster did not probe has no fault potential to report
 function faultPotential(survival: number | null | undefined): string {
   return survival === null || survival === undefined ? 'n/a'.padStart(6) : asPercent(1 - survival)
+}
+
+// Outcomes are always stated from one side's point of view; flipping is how a verdict
+// about the mover is read as a verdict about their opponent.
+function flipOutcome(result: GameResult): GameResult {
+  return result === 'win' ? 'loss' : result === 'loss' ? 'win' : 'draw'
+}
+
+// Which of scoreToOutcome's two boundaries the question "is this outcome the one we
+// expect?" actually turns on, as the sign of the boundary the score has to clear. Asking
+// whether the mover is losing, only the -100cp line matters: a score that is clearly not a
+// loss answers it, and whether the rest of it is a draw or a win never comes into it. Only
+// a draw has a boundary on either side of it and so has to clear both.
+function decidingBoundarySigns(expectedOutcome: GameResult): number[] {
+  if (expectedOutcome === 'win') return [1]
+  if (expectedOutcome === 'loss') return [-1]
+  return [1, -1]
+}
+
+// Whether an evaluation sits far enough from the boundaries that decide the question that
+// more search cannot change the answer. See SETTLED_DECISIVE_CP.
+function isSettledEvaluation(line: EngineLine | undefined, expectedOutcome: GameResult): boolean {
+  if (!line) return false
+  if (line.scoreMate !== null) return true
+  const score = line.scoreCP
+  if (score === null) return false
+  return decidingBoundarySigns(expectedOutcome).every(
+    (sign) => score * sign >= SETTLED_DECISIVE_CP || score * sign <= SETTLED_LEVEL_CP,
+  )
 }
 
 function dtdWithReason(candidate: EngineLineWithDTD): string {
@@ -225,19 +267,65 @@ export function useMoveSelector(
     return positions
   }
 
+  /**
+   * Whether the position one of the user's captures just produced really is the outcome it
+   * looks like. The frame straight after a capture is not evidence on its own: Qxf7 against
+   * a defended pawn shows queen-against-bare-king for exactly one ply, and after the
+   * recapture the board is a dead draw. Nor can that be spotted structurally — "is there a
+   * recapture?" both condemns sound captures and clears blunders that hang something else —
+   * so the position is handed to the engine.
+   *
+   * The search is capped at CAPTURE_SOUNDNESS_THINKING_TIME_MS but abandoned as soon as its
+   * running evaluation answers the one question asked of it — not once the position is
+   * fully understood. A refuted capture is usually recognised on the first depth: the
+   * recapture is right there, and 0.00 already says "not a win for the user" however
+   * unclear draw-versus-loss still is. With the engine silent (a failed or unavailable
+   * search) the probe's own reading stands, since guessing the opposite would be no
+   * better informed.
+   */
+  async function captureKeepsUserOutcome(
+    fenAfterCapture: string,
+    userOutcomeWithBestPlay: GameResult,
+  ): Promise<boolean> {
+    const position = new Chess(fenAfterCapture)
+    if (position.isGameOver()) {
+      return (position.isCheckmate() ? 'win' : 'draw') === userOutcomeWithBestPlay
+    }
+    // The captured position has the computer to move, so the engine scores it from the
+    // computer's side — what the user's outcome asks for is the other side of it
+    const expectedMoverOutcome = flipOutcome(userOutcomeWithBestPlay)
+    // Kept from the progress updates because stopping the search resolves it with nothing
+    let latestLine: EngineLine | undefined
+    const finalLines = await engine
+      .getAnalysis(fenAfterCapture, 1, CAPTURE_SOUNDNESS_THINKING_TIME_MS, [], (lines) => {
+        latestLine = lines[0]
+        if (isSettledEvaluation(latestLine, expectedMoverOutcome)) engine.stopAnalysis()
+      })
+      .catch((): EngineLine[] => [])
+    const line = finalLines[0] ?? latestLine
+    if (!line) return true
+    const moverOutcome = scoreToOutcome(line.scoreCP, line.scoreMate)
+    return moverOutcome === null || moverOutcome === expectedMoverOutcome
+  }
+
   // A capture by the user that lands directly in a done position — the line itself may
   // never play it (a mating line happily ignores a hanging piece), but the user would.
   // Returns why the resulting position is done, or null when no such capture exists.
-  function userCaptureIntoDoneReason(
+  async function userCaptureIntoDoneReason(
     chess: Chess,
     doneReason: (chess: Chess) => DonePositionReason | null,
-  ): DonePositionReason | null {
+    userOutcomeWithBestPlay: GameResult,
+    skipSoundnessCheck: () => boolean,
+  ): Promise<DonePositionReason | null> {
     for (const move of chess.moves({ verbose: true })) {
       if (!move.isCapture() && !move.isEnPassant()) continue
       chess.move(move)
       const reason = chess.isStalemate() ? null : doneReason(chess)
+      const fenAfterCapture = chess.fen()
       chess.undo()
-      if (reason) return reason
+      if (!reason) continue
+      if (skipSoundnessCheck()) continue
+      if (await captureKeepsUserOutcome(fenAfterCapture, userOutcomeWithBestPlay)) return reason
     }
     return null
   }
@@ -358,14 +446,16 @@ export function useMoveSelector(
     return null
   }
 
-  function computeDistanceToDone(
+  async function computeDistanceToDone(
     line: EngineLine,
     currentFen: string,
     tbOutcome: OutcomeRetainingResult | null,
     metric: DecisiveDistanceMetric,
     playerColor: PlayerColor,
     startingStableMaterialBalance: number | null,
-  ): { dtd: number | null; dtdReason: DtdReason | null } {
+    userOutcomeWithBestPlay: GameResult,
+    skipSoundnessCheck: () => boolean,
+  ): Promise<{ dtd: number | null; dtdReason: DtdReason | null }> {
     let dtd: number | null = null
     let dtdReason: DtdReason | null = null
 
@@ -432,7 +522,14 @@ export function useMoveSelector(
       // forever (capturing it would only slow the mate down) — but the user would just
       // take it and call the position done, so probe their one-move deviations too
       const isUserToMove = i % 2 === 0
-      const captureReason = isUserToMove ? userCaptureIntoDoneReason(chess, doneReason) : null
+      const captureReason = isUserToMove
+        ? await userCaptureIntoDoneReason(
+            chess,
+            doneReason,
+            userOutcomeWithBestPlay,
+            skipSoundnessCheck,
+          )
+        : null
       if (captureReason !== null) {
         if (halfMovesPlayed + 1 < (dtd ?? Infinity)) {
           dtd = halfMovesPlayed + 1
@@ -587,12 +684,7 @@ export function useMoveSelector(
   ): Promise<{ weights: number[]; lineProducts: (number | null)[] }> {
     // outcomeWithBestUserPlay is from the computer's perspective; the probed positions
     // are user-to-move, so flip it to know what the user has to maintain there
-    const userOutcomeWithBestPlay: GameResult =
-      outcomeWithBestUserPlay === 'loss'
-        ? 'win'
-        : outcomeWithBestUserPlay === 'win'
-          ? 'loss'
-          : 'draw'
+    const userOutcomeWithBestPlay: GameResult = flipOutcome(outcomeWithBestUserPlay)
     interface Probe {
       lineIndex: number
       fen: string
@@ -760,6 +852,7 @@ export function useMoveSelector(
     currentFen: string,
     options: MoveSelectionOptions,
   ): Promise<MoveSelectionResult> {
+    const selectionStartedAt = Date.now()
     // Kicked off alongside the engine but never awaited: the tablebase only participates
     // if its answer has arrived by the time the engine is done
     const tbState: { outcome: OutcomeRetainingResult | null } = { outcome: null }
@@ -901,17 +994,31 @@ export function useMoveSelector(
         isZeroingAsDecisiveAsMate(currentFen, options.playerColor),
       scale: tbOutcome ? decisiveDistanceScale(tbOutcome.result.moves) : 1,
     }
-    const candidatesWithDtd: EngineLineWithDTD[] = candidates.map((line) => ({
-      ...line,
-      ...computeDistanceToDone(
-        line,
-        currentFen,
-        tbOutcome,
-        metric,
-        options.playerColor,
-        startingStableMaterialBalance,
-      ),
-    }))
+    // Verifying captures is the one part of the distance calculation that costs engine
+    // time, so it runs against a deadline measured from the whole selection — including
+    // the search that got us here, since that is the wait the user is already sitting
+    // through. An abandoned selection stops paying for it altogether.
+    const skipSoundnessCheck = (): boolean =>
+      options.shouldAbort?.() === true ||
+      Date.now() - selectionStartedAt > SKIP_SOUNDNESS_CHECKS_AFTER_MS
+    // Sequentially: the capture probes inside share the one engine, and a second search
+    // started while one is running aborts it instead of queueing behind it
+    const candidatesWithDtd: EngineLineWithDTD[] = []
+    for (const line of candidates) {
+      candidatesWithDtd.push({
+        ...line,
+        ...(await computeDistanceToDone(
+          line,
+          currentFen,
+          tbOutcome,
+          metric,
+          options.playerColor,
+          startingStableMaterialBalance,
+          flipOutcome(outcomeWithBestUserPlay),
+          skipSoundnessCheck,
+        )),
+      })
+    }
     clampDistancesToTablebaseOrdering(candidatesWithDtd, tbOutcome, metric)
 
     const plan =
