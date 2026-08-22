@@ -189,7 +189,7 @@ solved, attempted_at}` per attempt (`PendingAttempt`) and computes its own optim
   selected files. No per-theme CSS is generated and the browser downloads only what
   the variables currently reference; `preloadAssets.ts` fetches the active set first
   and then, on idle, everything else, so all options stay selectable offline. The active
-  set is then *shown* from those downloaded bytes (a `blob:` URL swapped into the same
+  set is then _shown_ from those downloaded bytes (a `blob:` URL swapped into the same
   variable): a `background-image` whose own request failed — which happens on a first
   visit, where the piece SVGs compete with the engine download for the connection — is
   never retried by the browser and reports no error anywhere, so the piece stayed

@@ -1561,6 +1561,14 @@ defineExpose({
   width: 100%;
   aspect-ratio: 1;
   container-type: inline-size;
+  /* Chessground drags a piece by translating it to the pointer, so dragging past the
+     board edge would stretch the scrollable area of whatever is scrolling the page —
+     growing a scrollbar on a layout deliberately sized to need none, or lengthening an
+     existing one mid-drag. Clipping here keeps that overflow from ever reaching an
+     ancestor; the cost is that the piece is no longer painted outside the board. Note
+     `overflow-clip-margin` is not an option: content within the margin still counts
+     towards the ancestors' scrollable area, which is the whole problem. */
+  overflow: clip;
 }
 
 .board {
