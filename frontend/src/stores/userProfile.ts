@@ -117,7 +117,11 @@ export const useUserProfileStore = defineStore('userProfile', () => {
       engineThreads: defaultEngineThreads(),
     }
     persistProfile(profile.value)
-    if (lichessUsername) useSyncStore().markProfileDirty()
+    // Always push, even with nothing user-chosen yet: the browser-detected language
+    // and the default theme are only defaults on *this* device, so leaving settings
+    // as the server's `{}` would hand a second device an English/dark UI instead
+    // (see applyRemoteProfile's `?? 'en'` / `?? 'dark'` fallbacks).
+    useSyncStore().markProfileDirty()
   }
 
   function recordResult(
@@ -277,6 +281,13 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     // on the cores of the device it runs on, so it stays whatever this device chose.
     const deviceEngineThreads = profile.value?.engineThreads ?? defaultEngineThreads()
 
+    // An empty settings blob is the column's default (`'{}'::jsonb`) — it means this
+    // account has never pushed its preferences, not that the user picked the defaults.
+    // Falling through to 'en'/'dark' there would wipe the locale detected at profile
+    // creation, so this device's values stand in and pullRemoteState pushes them up.
+    // Once the cloud does hold a blob it wins outright, including its explicit nulls.
+    const localFallback = settings && Object.keys(settings).length > 0 ? null : profile.value
+
     profile.value = {
       // pullRemoteState claims an un-onboarded (null-username) row before it ever
       // reaches this merge, so the fallbacks only satisfy the column's nullability.
@@ -297,14 +308,17 @@ export const useUserProfileStore = defineStore('userProfile', () => {
         exerciseId: row.puzzle_id ?? undefined,
         solved: row.solved,
       })),
-      difficultyPreference: settings?.difficultyPreference ?? 'around',
-      analysisEnginePaused: settings?.analysisEnginePaused ?? false,
-      tablebaseMovesExpanded: settings?.tablebaseMovesExpanded ?? false,
-      themeMode: settings?.themeMode ?? 'dark',
-      language: settings?.language ?? 'en',
-      boardTheme: boardThemeOrDefault(settings?.boardTheme),
-      pieceSet: pieceSetOrDefault(settings?.pieceSet),
-      lichessUsername: settings?.lichessUsername ?? null,
+      difficultyPreference:
+        settings?.difficultyPreference ?? localFallback?.difficultyPreference ?? 'around',
+      analysisEnginePaused:
+        settings?.analysisEnginePaused ?? localFallback?.analysisEnginePaused ?? false,
+      tablebaseMovesExpanded:
+        settings?.tablebaseMovesExpanded ?? localFallback?.tablebaseMovesExpanded ?? false,
+      themeMode: settings?.themeMode ?? localFallback?.themeMode ?? 'dark',
+      language: settings?.language ?? localFallback?.language ?? 'en',
+      boardTheme: boardThemeOrDefault(settings?.boardTheme ?? localFallback?.boardTheme),
+      pieceSet: pieceSetOrDefault(settings?.pieceSet ?? localFallback?.pieceSet),
+      lichessUsername: settings?.lichessUsername ?? localFallback?.lichessUsername ?? null,
       engineThreads: deviceEngineThreads,
     }
     persistProfile(profile.value)

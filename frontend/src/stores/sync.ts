@@ -267,6 +267,12 @@ export const useSyncStore = defineStore('sync', () => {
         // pull) isn't in the cloud profile yet — re-apply it so "cloud wins"
         // doesn't silently drop the link.
         useLichessAuth().applyPendingUsernameToProfile()
+        // Accounts predating the unconditional push in createProfile still carry the
+        // column's default `{}`. applyRemoteProfile just kept this device's preferences
+        // rather than overwriting them with 'en'/'dark' — queue them so the cloud row
+        // finally holds them and the next device inherits the real values.
+        if (!state.profile.settings || Object.keys(state.profile.settings).length === 0)
+          markProfileDirty()
         // The puzzle on the board was picked for the pre-pull Elo — after signing in
         // that's the setup modal's default-level teaser, which can be nowhere near the
         // account's real rating.
